@@ -45,6 +45,9 @@ demo-mode (mock sensor) flag, stored `NeutralBaseline` (JSON).
 
 ## Privacy rules
 
-- No raw `MotionSample` data is persisted by default. A developer-only motion recording for
-  fixtures may exist behind an explicit toggle and stays on device.
+- No raw `MotionSample` data is persisted by default. The only exception is the user-started
+  motion recording in Diagnostics (D-017 (d)): a temporary JSON file in the recording format
+  (`shared/fixtures/README.md`), shared only by the user through the share sheet and deleted when
+  they leave Diagnostics, start a new recording, tap Delete, or relaunch. Never written to
+  SwiftData or UserDefaults, never uploaded by the app, never sent to the sync server.
 - The user can delete all sessions and the baseline from Privacy & Data.
