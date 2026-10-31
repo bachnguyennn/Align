@@ -72,6 +72,7 @@ Under this convention a +20° chin-down pose has head-frame gravity (0, +0.342, 
 | `nod_axis_calibration_sideways_rejected` (Java) | right ear to shoulder 20° and back instead of a nod | axis `inconsistentMotion`, no learned axes |
 | `nod_axis_calibration_no_nod` (Java) | keeps still during the axis calibration | axis `noNodDetected` after 8 s, no learned axes |
 | `calibration_brief_fidget` (Java) | one 1 s fidget to 10° at 4 s during the neutral calibration | `succeeded` with quantile 0.9 (the v1 rule, quantile 1.0, rejects it) |
+| `calibration_slow_slouch` (Java) | steady slouch from 0 to 10° forward over the 10 s neutral calibration | `tooMuchMovement` from the D-020 drift rule (the spread rule alone accepts it), final `needsCalibration` |
 
 ## Format (schemaVersion 1)
 
@@ -112,9 +113,10 @@ Keys are the Swift `PostureConfiguration` property names: `calibrationDuration`,
 `calibrationMaxSpreadDegrees`, `minimumCalibrationSamples`, `forwardThresholdDegrees`,
 `backwardThresholdDegrees`, `lateralThresholdDegrees`, `hysteresisDegrees`, `sustainedDuration`,
 `reminderCooldown`, `smoothingTimeConstant`, `maxProcessingRateHz`, `maxSampleGap`, plus
-`forwardAxis` / `lateralAxis` as `[x, y, z]`, and since D-017 `calibrationSpreadQuantile`,
+`forwardAxis` / `lateralAxis` as `[x, y, z]`, since D-017 `calibrationSpreadQuantile`,
 `axisCalibrationDuration`, `axisCalibrationMinimumNodDegrees`, `axisCalibrationMaxYawDegrees`,
-`axisCalibrationMaxOffAxisRatio`. Absent keys keep the `.default` value.
+`axisCalibrationMaxOffAxisRatio`, and since D-020 `calibrationMaxDriftDegrees`,
+`calibrationDriftWindow`. Absent keys keep the `.default` value.
 
 ### `actions`
 Applied in order **before the first sample whose `t` ≥ the action's `t`**; actions after the
@@ -162,7 +164,9 @@ Run `rereference` (above) whenever the reference algorithm changes, and commit t
 (Java) and Swift changes together. D-017 changed no v1 reference block: with the quantile rule
 every v1 fixture keeps its outcome (`calibration_too_much_movement` still fails: its ±9° nodding
 leaves far fewer than 90 % of the samples within 5°), and a calibration whose samples are all
-within the spread produces bit for bit the v1 baseline.
+within the spread produces bit for bit the v1 baseline. D-020 (calibration drift rule) changed no
+reference block either (`rereference --check`: 0 differ); no committed fixture drifts by more
+than 3° between the first and last 2 s of its calibration.
 
 ## Recordings (D-017 (d))
 
