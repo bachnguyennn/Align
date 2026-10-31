@@ -19,6 +19,9 @@ import AlignCore
 /// this removes the `cos(offset)` under-reading caused by an earbud sitting pitched or rolled in
 /// the ear. It is identical to the plain projection when the axes are already perpendicular to
 /// `g0`.
+///
+/// `PostureMonitor` passes its `effectiveAxes`: the axes learned from a guided nod (D-017), which
+/// also remove earbud yaw (forward↔lateral crosstalk), or else `configuration.axes`.
 public enum TiltEstimator {
     /// Below this cross-product length the two gravity vectors are treated as parallel.
     static let parallelEpsilon: Double = 1e-12

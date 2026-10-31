@@ -2,9 +2,14 @@ import Foundation
 import AlignCore
 
 /// Collects `calibrationDuration` seconds of smoothed gravity, measured from the first sample it
-/// receives after `begin()`. Baseline = normalized mean. Fails with `.insufficientSamples` if fewer
-/// than `minimumCalibrationSamples` were collected, otherwise with `.tooMuchMovement` if any sample
-/// is more than `calibrationMaxSpreadDegrees` from the mean.
+/// receives after `begin()`. Fails with `.insufficientSamples` if fewer than
+/// `minimumCalibrationSamples` were collected.
+///
+/// Spread rule (D-017): let `m` be the normalized mean of all samples and the inliers the samples
+/// within `calibrationMaxSpreadDegrees` of `m`. Fails with `.tooMuchMovement` unless the inliers are
+/// at least `calibrationSpreadQuantile` of the samples (1.0 = the v1 rule "every sample").
+/// Baseline = normalized mean of the inliers, so a brief fidget does not bias it; when every
+/// sample is an inlier this is exactly `m`, identical to v1.
 /// Mirrors `CalibrationService` in `analytics/align-tools`.
 public struct CalibrationService: Sendable {
     public enum Step: Equatable, Sendable {
@@ -75,11 +80,27 @@ public struct CalibrationService: Sendable {
             return .failed(.tooMuchMovement, sampleCount: count)
         }
         let limit = configuration.calibrationMaxSpreadDegrees
+        var inliers = 0
+        var inlierTotal = Vector3.zero
         for g in collected {
-            if TiltEstimator.angleDegrees(between: g, and: mean) > limit {
-                return .failed(.tooMuchMovement, sampleCount: count)
+            if TiltEstimator.angleDegrees(between: g, and: mean) <= limit {
+                inliers += 1
+                inlierTotal = inlierTotal + g
             }
         }
-        return .succeeded(meanGravity: mean, sampleCount: count)
+        if !CalibrationService.hasEnoughInliers(inliers, of: count, quantile: configuration.calibrationSpreadQuantile) {
+            return .failed(.tooMuchMovement, sampleCount: count)
+        }
+        let baselineGravity = inliers == count ? mean : inlierTotal.normalized
+        if baselineGravity.length == 0 {
+            return .failed(.tooMuchMovement, sampleCount: count)
+        }
+        return .succeeded(meanGravity: baselineGravity, sampleCount: count)
+    }
+
+    /// True if `inliers` of `count` samples reach `quantile` (clamped to 0...1).
+    public static func hasEnoughInliers(_ inliers: Int, of count: Int, quantile: Double) -> Bool {
+        let q = min(1.0, max(0.0, quantile))
+        return Double(inliers) + PostureDetectionConstants.calibrationQuantileEpsilon * Double(count) >= q * Double(count)
     }
 }
