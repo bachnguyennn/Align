@@ -41,7 +41,7 @@ AirPods Pro IMU
 | PostureDetection | `ios/AlignKit/Sources/PostureDetection` | AlignCore | Algorithm |
 | Sensors | `ios/AlignKit/Sources/Sensors` | AlignCore, CoreMotion (iOS only) | Sensor |
 | Align app | `ios/AlignApp` (XcodeGen `ios/project.yml`) | all three, SwiftUI, SwiftData, Charts, UserNotifications | Frontend |
-| Python reference + evaluation | `analytics/experiments` | numpy, pandas, scipy | Algorithm |
+| Java reference + generator + evaluation | `analytics/align-tools` | Java 21, Maven, Jackson, JUnit 5 | Algorithm |
 | Replay fixtures | `shared/fixtures/motion` | — | Algorithm |
 | CI | `.github/workflows` | — | QA |
 
@@ -68,8 +68,8 @@ ios/AlignKit/        Swift package: AlignCore, PostureDetection, Sensors (+ test
 ios/AlignApp/        SwiftUI app sources (Features/, Persistence/, Notifications/, App/)
 ios/AlignAppTests/   App-level unit tests
 ios/project.yml      XcodeGen spec (the .xcodeproj is generated, not committed)
-analytics/           Python reference implementation and evaluation (backend + pipelines in Phase 2)
-shared/fixtures/     Replayable motion fixtures used by Python and Swift tests
+analytics/           Java reference implementation, fixture generator and evaluation (align-tools)
+shared/fixtures/     Replayable motion fixtures used by the Java and Swift tests
 docs/agents/         Contracts, decisions, task board, logs, agent reports
 docs/research/       Feasibility, algorithm evaluation, privacy review
 .github/workflows/   CI

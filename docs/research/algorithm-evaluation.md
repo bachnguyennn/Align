@@ -6,20 +6,22 @@ yet). Task A-04.
 ## Reproduce
 
 ```sh
-py -3.12 -m venv analytics/.venv                       # once (Windows; python3 -m venv elsewhere)
-analytics/.venv/Scripts/python -m pip install -r analytics/requirements.txt
-analytics/.venv/Scripts/python -m pytest analytics/experiments/tests        # 103 tests
-cd analytics/experiments
-../.venv/Scripts/python -m align_reference.evaluate --seeds 20   # ~3 min; writes results/evaluation.md
+cd analytics/align-tools
+./mvnw verify                                                        # JUnit, incl. fixture replay
+./mvnw -q compile exec:java@evaluate -Dexec.args="--seeds 20"        # ~15 s; writes results/evaluation.md
 ```
 
-All numbers below are copied from `analytics/experiments/results/evaluation.md`, produced by that
-command (numpy 2.5.4, CPython 3.12, Windows 11). Re-running it regenerates them exactly.
+All numbers below were produced by the original Python reference (numpy 2.5.4, CPython 3.12,
+Windows 11; `analytics/experiments/results/evaluation.md`, removed after the Java port (D-015) and
+still in git history). The Java report (`analytics/align-tools/results/evaluation.md`) reproduces
+the noise-free axis-projection table exactly; every other table uses the Java generator's random
+streams and differs only within noise, with the same conclusions.
 
 ## Method
 
-**Pipeline under test** — `analytics/experiments/align_reference` (the executable specification;
-the Swift `PostureDetection` module mirrors it line for line):
+**Pipeline under test** — the reference pipeline (originally Python, now `analytics/align-tools`
+in Java with identical output; the executable specification). The Swift `PostureDetection` module
+mirrors it line for line:
 
 1. Gap check (gap > `maxSampleGap` = 1 s ⇒ interrupt at the previous sample) and optional
    decimation (`maxProcessingRateHz`).
@@ -41,7 +43,7 @@ the Swift `PostureDetection` module mirrors it line for line):
 Z-vertical reference), head-frame gravity is `g0 = R0ᵀgw` and `g = R1ᵀgw = Dᵀg0`. The rotation
 taking `g0` to `g` is `D⁻¹`: gravity seen in the head frame turns opposite to the head, so the
 head rotation vector is `−r`. Rotation about `g0` (heading) leaves `g` unchanged and is excluded.
-Checked numerically (pytest `test_sign_derivation_forward_rotation_gives_positive_forward`, and
+Checked numerically (JUnit `signDerivationForwardRotationGivesPositiveForward`, and
 the Swift test of the same name): a +20° rotation about `forwardAxis` gives `r = −20°·forwardAxis`
 and `forwardDegrees = +20.000000000`.
 
@@ -57,7 +59,7 @@ renormalized. When the axes are already perpendicular to `g0` this is identical 
 product; when the earbud sits pitched or rolled in the ear it removes the `cos(offset)`
 under-reading (see the table below).
 
-**Synthetic data** — `align_reference/generator.py`: scripted pose (cosine-eased keyframes and
+**Synthetic data** — the fixture generator (`Generator.java`, ported from `generator.py`): scripted pose (cosine-eased keyframes and
 glances) + OU sway (σ 0.5°, τ 1.5 s) + 0.25 Hz breathing + Poisson micro-movements (N(0, 1.5°),
 ≤ 4°, 0.6–2 s, none during calibration) + heading random walk and 15–45° head turns + earbud
 mounting offset (pitch 8°, roll −3°) + 0.05° white sensor noise + 4 ms timestamp jitter, at
@@ -170,16 +172,16 @@ borderline**: 10 s gives 100–101 samples. Lower it when capping the rate.
 
 ### Throughput
 
-CPython reference: 2551 samples in 38 ms (15 µs/sample). Swift will be much faster; this is
-informational only.
+CPython reference: 2551 samples in 38 ms (15 µs/sample). The Java port runs the full evaluation in
+about 14 s against 188 s for Python. Informational only.
 
-### Python ↔ Swift parity
+### Reference ↔ Swift parity
 
-Every fixture in `shared/fixtures/motion` stores the Python reference output (`reference`).
-The Swift `FixtureReplayTests` assert the same reminder/episode counts, directions,
-calibration outcomes, final state and number of state transitions, with times within one
-sample period and degrees within 0.05°. **This parity has not been run yet**: no Swift
-toolchain was available, so it runs for the first time in CI.
+Every fixture in `shared/fixtures/motion` stores the reference output (`reference`, written by
+the Python reference). The Java port reproduces all eight blocks bit for bit (JUnit). The Swift
+`FixtureReplayTests` assert the same reminder/episode counts, directions, calibration outcomes,
+final state and number of state transitions, with times within one sample period and degrees
+within 0.05°; they pass in CI (`swift-package` and `swift-linux`).
 
 ## Recommendations
 

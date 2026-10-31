@@ -12,7 +12,7 @@
   <name>Align reference tools</name>
   <description>
     Executable spec of the Swift PostureDetection pipeline, synthetic motion fixture generator and
-    evaluation (D-015: Java port of analytics/experiments/align_reference).
+    evaluation (D-015: Java port of the former Python package align_reference).
   </description>
 
   <properties>

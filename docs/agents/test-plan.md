@@ -18,7 +18,7 @@ reminder cooldown 300 s, max sample gap 1 s. If the defaults change, update the 
 | **Unit — PostureDetection** | `MotionFilter`, `CalibrationService`, `PostureDetector`, `ReminderDecisionEngine`, `PostureMonitor` state machine: thresholds, hysteresis, sustained duration, cooldown, direction precedence, `maxSampleGap` and `interrupt` | CI `swift-package`, `swift-linux` | Algorithm | Yes |
 | **Unit — Sensors** | `MockSensorProvider` event order (first event is `.connectionChanged`, `stop()` emits `.idle` and finishes), every scenario, `gravity` always set, mock tilt sign matches `TiltEstimate`; `SampleRateMeter` | CI `swift-package`, `swift-linux` | Sensor | Yes |
 | **iOS compile of package** | `#if os(iOS)` code (`RealAirPodsSensorProvider`) compiles against the iOS SDK | CI `swift-package` (generic iOS Simulator build) | Sensor | Yes |
-| **Fixture replay** | The same `shared/fixtures/motion/*.json` files replayed by Python (`analytics/experiments`) and Swift (`PostureDetectionTests`) produce the same reminders and episodes | CI `python` + `swift-package` | Algorithm | Yes, once A-03 lands |
+| **Fixture replay** | The same `shared/fixtures/motion/*.json` files replayed by the Java reference (`analytics/align-tools`) and Swift (`PostureDetectionTests`) produce the same reminders and episodes | CI `java` + `swift-package` | Algorithm | Yes |
 | **App unit** | `MonitoringController` driven by `MockSensorProvider`; session lifecycle and pause; SwiftData with an in-memory container (session/event writes, cascade delete, delete-all); monotonic timestamp → `Date` conversion; daily summaries incl. a session crossing midnight; reminder delivery through a fake notification center; settings JSON round trip | CI `ios-app` (iOS Simulator) | Frontend | Yes |
 | **Simulator, mock sensor** | Manual walkthrough of every screen with demo mode; each `MockScenario`; unavailable/permission states; accessibility | Developer Mac / Xcode Simulator | Frontend + QA | Release checklist |
 | **Physical device** | Real Core Motion stream, axis signs (S-05), permissions, disconnects, notifications, background behavior, battery, offline | iPhone + AirPods Pro, run by the user | User + QA | Release checklist; S-05 blocks trusting default axes |
@@ -28,8 +28,7 @@ reminder cooldown 300 s, max sample gap 1 s. If the defaults change, update the 
 | Job | Runner | Runs | Skips cleanly when |
 |---|---|---|---|
 | `hygiene` | ubuntu-24.04 | CRLF check, generated `.xcodeproj` not tracked, shellcheck | — |
-| `python` | ubuntu-24.04, Python 3.12 | `pip install -r analytics/requirements.txt`, `pytest analytics/experiments` | `analytics/experiments` absent |
-| `java` | ubuntu-24.04, Temurin 21 (`setup-java`, Maven cache) | `./mvnw -B -ntp verify` in `analytics/align-tools` (JUnit: pipeline, fixture replay + Python parity, generator, evaluation); test count as a notice | — |
+| `java` | ubuntu-24.04, Temurin 21 (`setup-java`, Maven cache) | `./mvnw -B -ntp verify` in `analytics/align-tools` (JUnit: pipeline, fixture replay + reference parity, generator, evaluation); test count as a notice | — |
 | `swift-package` | macos-15, Xcode 16.4 | `swift build --build-tests`, `swift test`, iOS Simulator build of `AlignKit-Package` | — |
 | `swift-linux` | `swift:5.10-jammy` container | `swift build --build-tests`, `swift test` (`continue-on-error`) | — |
 | `ios-app` | macos-15, Xcode 16.4 | `xcodegen generate`, `xcodebuild build`, `xcodebuild test` on the newest available iPhone simulator | `ios/project.yml` absent |
@@ -197,7 +196,7 @@ and a Diagnostics screenshot or screen recording where possible.
 
 ## 4. Exit criteria for Phase 1
 
-- CI green on `main` for `hygiene`, `python`, `swift-package`, `ios-app` (Linux job may still be
+- CI green on `main` for `hygiene`, `java`, `swift-package`, `ios-app` (Linux job may still be
   non-blocking).
 - Fixture replay parity passing (A-03).
 - Device cases D-01…D-04, D-06, C-01…C-04, T-01…T-08, R-02…R-06, R-08, N-02, O-01, O-02, P-01

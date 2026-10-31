@@ -34,7 +34,8 @@ import java.util.stream.Collectors;
  * motion model) through {@link PostureMonitor}. Synthetic data cannot validate real-world accuracy;
  * it measures the algorithm's timing behaviour and robustness to the modelled noise. Because the
  * Java generator draws different random numbers than numpy, every table except the noise-free axis
- * projection differs slightly from the Python report (analytics/experiments/results/evaluation.md).
+ * projection differs slightly from the original Python report (removed with the Python tools,
+ * D-015; in git history).
  */
 public final class Evaluate {
 
@@ -391,7 +392,7 @@ public final class Evaluate {
                 + "Seeds per cell: " + seeds + " unless noted (sweeps marked with a hold/hover use " + small + ").\n\n"
                 + "All synthetic data comes from the Java generator (`Generator.java`, SplittableRandom), not numpy, so "
                 + "every table except the noise-free axis projection differs slightly from the Python report "
-                + "(`analytics/experiments/results/evaluation.md`); the axis projection table is identical.\n";
+                + "(removed with the Python tools, D-015; in git history); the axis projection table is identical.\n";
         String body = sections.entrySet().stream()
                 .map(e -> "## " + e.getKey() + "\n\n" + e.getValue())
                 .collect(Collectors.joining("\n\n"));

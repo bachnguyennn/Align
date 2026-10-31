@@ -1,19 +1,20 @@
 package com.bachnguyennn.align.reference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** Port of tests/test_evaluate.py, plus parity of the noise-free table with the Python report. */
 class EvaluateTest {
 
-    private static final String PYTHON_REPORT = "analytics/experiments/results/evaluation.md";
-    private static final String AXIS_SECTION = "## Axis projection with earbud mounting offset (noise-free, 20° poses)";
+    /** The axis-projection table of the original Python report, frozen when the Python was removed (D-015). */
+    private static final String PYTHON_AXIS_TABLE = "/python-axis-projection.md";
 
     @Test
     void axisProjectionTableRenders() {
@@ -31,13 +32,11 @@ class EvaluateTest {
     /** The axis projection uses no random data, so it must equal the Python report's table exactly. */
     @Test
     void axisProjectionTableMatchesPythonReport() throws IOException {
-        Path report = Fixtures.repoRoot().resolve(PYTHON_REPORT);
-        String text = Files.readString(report).replace("\r\n", "\n");
-        int start = text.indexOf(AXIS_SECTION);
-        assertTrue(start >= 0, "section missing from " + report);
-        int tableStart = text.indexOf("| ", start);
-        int tableEnd = text.indexOf("\n\n", tableStart);
-        assertEquals(text.substring(tableStart, tableEnd), Evaluate.axisProjection());
+        try (InputStream in = EvaluateTest.class.getResourceAsStream(PYTHON_AXIS_TABLE)) {
+            assertNotNull(in, PYTHON_AXIS_TABLE + " missing");
+            String expected = new String(in.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n").strip();
+            assertEquals(expected, Evaluate.axisProjection());
+        }
     }
 
     @Test

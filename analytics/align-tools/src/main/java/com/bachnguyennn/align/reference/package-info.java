@@ -2,7 +2,7 @@
  * Align posture-detection reference implementation (executable spec for the Swift
  * {@code PostureDetection} module), synthetic fixture generator and evaluation.
  *
- * <p>Java port (D-015) of the Python package {@code analytics/experiments/align_reference}; file
+ * <p>Java port (D-015) of the former Python package {@code align_reference} (removed; in git history); file
  * and member names follow the Python modules so the two can be diffed: {@code geometry.py} →
  * {@link com.bachnguyennn.align.reference.Geometry}, {@code model.py} → the record types and
  * {@link com.bachnguyennn.align.reference.Model}, {@code motion_filter.py} →

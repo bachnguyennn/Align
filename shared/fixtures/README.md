@@ -2,12 +2,12 @@
 
 `motion/*.json` are synthetic AirPods head-motion recordings with the outcomes the posture
 pipeline must produce. The same files are replayed by the Java reference
-(`analytics/align-tools`, JUnit), by the Python reference it replaces (`analytics/experiments`,
-pytest; to be removed, D-015) and by Swift (`ios/AlignKit/Tests/PostureDetectionTests`).
+(`analytics/align-tools`, JUnit) and by Swift (`ios/AlignKit/Tests/PostureDetectionTests`).
 
-They are generated, not hand-edited. **The committed files were produced by the Python
-generator** (`align_reference/generator.py`, numpy 2.5.4); their `generator` block says so. The
-Java generator is a port of the same motion model, so new fixtures come from:
+They are generated, not hand-edited. **The committed files were produced by the original Python
+generator** (`align_reference/generator.py`, numpy 2.5.4; removed after the Java port, D-015, and
+still in git history); their `generator` block says so. The Java generator is a port of the same
+motion model, so new fixtures come from:
 
 ```sh
 cd analytics/align-tools
@@ -108,7 +108,7 @@ last sample are applied at the end. Types: `beginCalibration`, `cancelCalibratio
   peakDeviationDegrees, reminderTriggered), calibrationOutcomes, finalState and
   stateTransitions (number of changes of PostureState case between consecutive updates).
   `producedBy` names the writer (`align_reference 0.1.0` = Python, `align-tools 0.1.0` = Java).
-  Python asserts it exactly; Java asserts the same outcomes, counts, directions and transitions,
+  Java asserts the same outcomes, counts, directions and transitions,
   timestamps within 1e-9 and rounded degree values within 1e-4 (today all eight committed blocks
   are reproduced bit for bit); Swift asserts the same counts/directions/outcomes/transitions,
   times within one sample period and degrees within 0.05°.

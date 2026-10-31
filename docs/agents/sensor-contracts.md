@@ -101,5 +101,5 @@ Internal components (public for testing): `MotionFilter`, `CalibrationService`, 
 ## 3. Replay fixtures — owned by the Algorithm agent
 
 `shared/fixtures/motion/*.json`, format documented in `shared/fixtures/README.md`. Both
-`analytics/experiments` (Python) and `PostureDetectionTests` (Swift) must replay the same files
+`analytics/align-tools` (Java) and `PostureDetectionTests` (Swift) must replay the same files
 and agree on expected reminders and episodes.

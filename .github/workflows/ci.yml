@@ -5,7 +5,7 @@
 # surface as an annotation:
 #   - xcodebuild / swift output goes through `xcbeautify --renderer github-actions` (macOS);
 #   - Linux and shellcheck output goes through scripts/ci/annotate-diagnostics.sh;
-#   - pytest uses pytest-github-actions-annotate-failures;
+#   - Maven/JUnit output: the surefire summary line becomes a notice;
 #   - every job ends with an `if: failure()` step that posts the error lines + tail of the last
 #     raw log as one annotation (scripts/ci/annotate-log-tail.sh) and uploads logs/.xcresult.
 # Read results with: scripts/ci-status.sh [branch]
@@ -31,7 +31,7 @@ defaults:
     shell: bash
 
 # Runner images are pinned (not *-latest): ubuntu-latest started moving to Ubuntu 26 on
-# 2026-10-19 (runner-images#14748), which could break setup-python 3.12 availability.
+# 2026-10-19 (runner-images#14748), which could change preinstalled toolchains under the jobs.
 
 env:
   # Verified present on the macos-15 image (runner-images README, image 20261028): Xcode 16.4
@@ -79,68 +79,6 @@ jobs:
           fi
           shellcheck --version | head -n 2
           shellcheck -f gcc --severity=warning "${scripts[@]}" | bash scripts/ci/annotate-diagnostics.sh
-
-  python:
-    name: Python (analytics)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Detect analytics tests
-        id: detect
-        run: |
-          if [[ -d analytics/experiments ]]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Python tests skipped::analytics/experiments does not exist yet (Algorithm agent, A-01)."
-          fi
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        if: steps.detect.outputs.present == 'true'
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        if: steps.detect.outputs.present == 'true'
-        run: |
-          mkdir -p ci-logs
-          {
-            python -m pip install --upgrade pip
-            if [[ -f analytics/requirements.txt ]]; then
-              python -m pip install -r analytics/requirements.txt
-            else
-              echo "::notice title=No requirements file::analytics/requirements.txt not found; installing pytest only."
-            fi
-            # Keeps any pytest version pinned in requirements.txt; adds failure annotations.
-            python -m pip install pytest "pytest-github-actions-annotate-failures>=0.2,<1"
-          } 2>&1 | tee ci-logs/pip-install.log
-
-      - name: pytest analytics/experiments
-        if: steps.detect.outputs.present == 'true'
-        run: |
-          status=0
-          python -m pytest analytics/experiments -ra 2>&1 | tee ci-logs/pytest.log || status=$?
-          if [[ $status -eq 5 ]]; then
-            echo "::warning title=No Python tests collected::pytest found no tests under analytics/experiments."
-            exit 0
-          fi
-          exit $status
-
-      - name: Annotate failure
-        if: failure()
-        run: |
-          log="$(ls -t ci-logs/*.log 2>/dev/null | head -n 1 || true)"
-          bash scripts/ci/annotate-log-tail.sh "${log:-ci-logs/none.log}" "python: $(basename "${log:-no log}")"
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with:
-          name: python-logs
-          path: ci-logs/
-          if-no-files-found: ignore
-          retention-days: 7
 
   java:
     name: Java (analytics/align-tools)
