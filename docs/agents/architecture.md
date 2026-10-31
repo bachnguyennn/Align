@@ -30,7 +30,8 @@ AirPods Pro IMU
       ├─ ReminderNotifier (local notifications + haptics)
       └─ SwiftData store (MonitoringSession, PostureEvent)
   → History & analytics computed on device from stored sessions/events
-  (Phase 2: optional FastAPI sync of aggregated sessions/events only)
+  (Phase 2, optional and not wired into the app yet: server/ sync of sessions, events and
+   settings only — never raw motion; D-014, D-018)
 ```
 
 ## Modules
@@ -43,6 +44,7 @@ AirPods Pro IMU
 | Align app | `ios/AlignApp` (XcodeGen `ios/project.yml`) | all three, SwiftUI, SwiftData, Charts, UserNotifications | Frontend |
 | Java reference + generator + evaluation | `analytics/align-tools` | Java 21, Maven, Jackson, JUnit 5 | Algorithm |
 | Replay fixtures | `shared/fixtures/motion` | — | Algorithm |
+| Sync server (Phase 2) | `server/` | Java 21, Spring Boot 3.5 (Web, Validation, Data JPA, Security, Actuator), Flyway, PostgreSQL 16; H2 for tests | Backend |
 | CI | `.github/workflows` | — | QA |
 
 ## Tilt estimation (D-005)
@@ -73,5 +75,17 @@ shared/fixtures/     Replayable motion fixtures used by the Java and Swift tests
 docs/agents/         Contracts, decisions, task board, logs, agent reports
 docs/research/       Feasibility, algorithm evaluation, privacy review
 .github/workflows/   CI
-backend/             Phase 2 (not started)
+server/              Phase 2 sync server (Spring Boot, D-018); contract in docs/agents/api-contracts.md
 ```
+
+## Sync server (Phase 2, D-014/D-018)
+
+`server/` is an optional, stateless Spring Boot service in front of PostgreSQL. A device
+registers anonymously (`POST /api/v1/devices`) and gets a bearer token whose SHA-256 hash is the
+only credential stored. It then upserts sessions and their posture events by the app's own UUIDs
+(idempotent, so offline retries are safe), reads daily summaries computed with the same rules as
+`DailySummaryBuilder`, and keeps one versioned settings document (If-Match). `DELETE
+/api/v1/devices/me` erases everything. Packages: `auth` (token filter), `device`, `session`
+(sessions + events), `summary`, `settings`, `web` (problem+json errors, body size limit),
+`config`. Schema migrations are Flyway SQL (`server/src/main/resources/db/migration`). The app
+does not call the server yet; the opt-in sync toggle is a later Frontend task.

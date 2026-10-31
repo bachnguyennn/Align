@@ -156,3 +156,43 @@ endpoint, and an updated label before release.
 3. Should "Delete all data" also reset settings, or only sessions + baseline?
 4. File protection level for the store (R-09).
 5. Add `PrivacyInfo.xcprivacy` to the Frontend task list (§4.3).
+
+## 9. Phase 2 sync server (`server/`, D-018) — what it would store
+
+Added by the Backend agent. The server exists in the repo and is tested, but it is **not deployed
+and the app does not call it**, so the Phase 1 label in §6 still holds. Before the app's opt-in
+sync ships, the Lead must update §6, the privacy manifest and the App Store label.
+
+| Data on the server | Content | Linked to |
+|---|---|---|
+| Device registration | Random server-generated UUID, SHA-256 hash of the bearer token, creation time | Nothing else: no account, email, Apple ID, name, device model, hardware id, IP or user agent is stored |
+| Sessions | The `MonitoringSession` fields from data-contracts.md (start/end, monitored / within-threshold / sustained seconds, reminder count, calibration version, sensor status) + server created/updated times | The device UUID |
+| Posture events | The `PostureEvent` fields (start/end, direction, duration, peak degrees, reminder triggered) | The device UUID and its session |
+| Settings document | Reminder/sound/haptics/demo toggles and the tunable `PostureConfiguration` numbers | The device UUID |
+
+Not accepted by any endpoint (unknown fields are rejected): raw `MotionSample`s, gravity or
+attitude, the `NeutralBaseline`, learned axes, diagnostic motion recordings (D-007, D-017 d).
+
+- **Identity**: anonymous per install. Whoever holds the token can read that device's data, so the
+  app must keep it in the Keychain; losing it makes the data unreachable (and only erasable by an
+  operator). No cross-device linking exists.
+- **Retention**: until the user erases it. There is no automatic expiry in v1 (same open question
+  as R-08). Database backups, when a deployment exists, must have a defined retention so erased
+  data also ages out of backups.
+- **Erase**: `DELETE /api/v1/devices/me` deletes events, sessions, settings and the registration in
+  one transaction; the token stops working immediately (tested in `DeviceApiTest`). The app's
+  "Delete all history" should call it when sync is on, or offer it separately.
+- **Logs**: the server logs no request bodies, tokens or SQL parameters, and error responses do
+  not echo submitted values (tested in `NoSecretsInLogsTest`). A reverse proxy in front of it must
+  also not log the `Authorization` header.
+- **Expected label once sync ships**: *Health & Fitness → Fitness* (posture events) and *Usage
+  Data → Product Interaction* (sessions, reminders), purpose *App Functionality*, **not linked to
+  identity** (no account) and no tracking — to be confirmed against Apple's definitions; the token
+  is an app-scoped random identifier, not a device identifier.
+
+| ID | Risk | Severity | Mitigation |
+|---|---|---|---|
+| R-13 | Token leaked from device or logs gives full access to that device's history | Medium | Keychain storage (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), TLS only, no logging; future token rotation endpoint |
+| R-14 | Unauthenticated `POST /devices` abused to fill the database | Medium (availability) | Rate limiting / App Attest before any public deployment |
+| R-15 | Erased data survives in database backups | Low | Short backup retention, documented in the privacy policy |
+

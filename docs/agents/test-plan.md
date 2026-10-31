@@ -29,6 +29,7 @@ reminder cooldown 300 s, max sample gap 1 s. If the defaults change, update the 
 |---|---|---|---|
 | `hygiene` | ubuntu-24.04 | CRLF check, generated `.xcodeproj` not tracked, shellcheck | — |
 | `java` | ubuntu-24.04, Temurin 21 (`setup-java`, Maven cache) | `./mvnw -B -ntp verify` in `analytics/align-tools` (JUnit: pipeline, fixture replay + reference parity, generator, evaluation); test count as a notice | — |
+| `server` | ubuntu-24.04, Temurin 21, `postgres:16` service container | `./mvnw -B -ntp verify` in `server` with `ALIGN_TEST_DATABASE_URL` pointing at the service, so the full API suite (auth, isolation, idempotency, validation, erase, settings concurrency, summaries, pagination, limits) runs on real PostgreSQL; `DatabaseEngineTest` fails if it fell back to H2; test count and database as a notice | — |
 | `swift-package` | macos-15, Xcode 16.4 | `swift build --build-tests`, `swift test`, iOS Simulator build of `AlignKit-Package` | — |
 | `swift-linux` | `swift:5.10-jammy` container | `swift build --build-tests`, `swift test` (`continue-on-error`) | — |
 | `ios-app` | macos-15, Xcode 16.4 | `xcodegen generate`, `xcodebuild build`, `xcodebuild test` on the newest available iPhone simulator | `ios/project.yml` absent |
