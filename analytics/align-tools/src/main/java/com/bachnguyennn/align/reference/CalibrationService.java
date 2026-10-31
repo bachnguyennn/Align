@@ -20,6 +20,12 @@ import java.util.List;
  * rule "every sample"). Baseline = normalized mean of the inliers, so a brief fidget that the
  * quantile tolerates does not bias the baseline. When every sample is an inlier this is exactly
  * {@code m} (same sum in the same order), i.e. identical to v1.
+ *
+ * <p>Drift rule (D-020), checked after the spread rule: fails with tooMuchMovement if the
+ * normalized mean gravity of the samples in the first {@code calibrationDriftWindow} seconds
+ * (t - start ≤ window) and that of the samples in the last {@code calibrationDriftWindow}
+ * seconds (last - t ≤ window) are more than {@code calibrationMaxDriftDegrees} apart. It catches
+ * a slow slouch, which the spread rule cannot (every sample stays near the mean of the ramp).
  */
 public final class CalibrationService {
 
@@ -40,6 +46,29 @@ public final class CalibrationService {
     private Double startTimestamp;
     private Double lastTimestamp;
     private List<Vec3> samples = new ArrayList<>();
+    private List<Double> timestamps = new ArrayList<>();
+
+    /**
+     * Angle (degrees) between the normalized mean of the samples with t - first ≤ window and that
+     * of the samples with last - t ≤ window (D-020). {@code gravities} and {@code times} are
+     * non-empty and parallel; times are in increasing order.
+     */
+    public static double driftDegrees(List<Vec3> gravities, List<Double> times, double window) {
+        double first = times.get(0);
+        double last = times.get(times.size() - 1);
+        Vec3 head = ZERO;
+        Vec3 tail = ZERO;
+        for (int i = 0; i < gravities.size(); i++) {
+            double t = times.get(i);
+            if (t - first <= window + Model.TIME_EPSILON) {
+                head = Geometry.add(head, gravities.get(i));
+            }
+            if (last - t <= window + Model.TIME_EPSILON) {
+                tail = Geometry.add(tail, gravities.get(i));
+            }
+        }
+        return angleBetweenDegrees(normalized(head), normalized(tail));
+    }
 
     /** Tolerance of the quantile comparison, so that e.g. 225 of 250 samples count as 0.9. */
     public static final double QUANTILE_EPSILON = 1e-9;
@@ -59,6 +88,7 @@ public final class CalibrationService {
         startTimestamp = null;
         lastTimestamp = null;
         samples = new ArrayList<>();
+        timestamps = new ArrayList<>();
     }
 
     public void cancel() {
@@ -66,6 +96,7 @@ public final class CalibrationService {
         startTimestamp = null;
         lastTimestamp = null;
         samples = new ArrayList<>();
+        timestamps = new ArrayList<>();
     }
 
     public double progress(double duration) {
@@ -85,6 +116,7 @@ public final class CalibrationService {
         }
         lastTimestamp = timestamp;
         samples.add(gravityUnit);
+        timestamps.add(timestamp);
         double elapsed = timestamp - startTimestamp;
         double duration = config.calibrationDuration();
         if (elapsed + Model.TIME_EPSILON < duration) {
@@ -92,6 +124,7 @@ public final class CalibrationService {
         }
 
         List<Vec3> collected = samples;
+        List<Double> times = timestamps;
         cancel();
         int count = collected.size();
         if (count < config.minimumCalibrationSamples()) {
@@ -115,6 +148,10 @@ public final class CalibrationService {
             }
         }
         if (!hasEnoughInliers(inliers, count, config.calibrationSpreadQuantile())) {
+            return CalibrationStep.failed(count, CalibrationFailure.TOO_MUCH_MOVEMENT);
+        }
+        // Written as !(x <= limit) so that NaN is rejected, exactly like Swift.
+        if (!(driftDegrees(collected, times, config.calibrationDriftWindow()) <= config.calibrationMaxDriftDegrees())) {
             return CalibrationStep.failed(count, CalibrationFailure.TOO_MUCH_MOVEMENT);
         }
         Vec3 baseline = inliers == count ? mean : normalized(inlierTotal);

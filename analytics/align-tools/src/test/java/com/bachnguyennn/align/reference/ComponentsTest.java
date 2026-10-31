@@ -194,6 +194,40 @@ class ComponentsTest {
         assertEquals(q10.meanGravity(), q09.meanGravity());
     }
 
+    /** 251 samples (10 s at 25 Hz) of a steady slouch from 0 to {@code degrees} forward. */
+    private static List<Vec3> slouchGravities(double degrees) {
+        List<Vec3> gs = new ArrayList<>();
+        for (int i = 0; i < 251; i++) {
+            gs.add(gFor(degrees * i / 250.0, 0.5));
+        }
+        return gs;
+    }
+
+    /** D-020: a steady 10 deg slouch passes the spread rule but fails the drift rule. */
+    @Test
+    void calibrationDriftRejectsASlowSlouch() {
+        PostureConfiguration noDrift = CFG.replacing(b -> b.calibrationMaxDriftDegrees(180.0));
+        assertNull(runCalibration(slouchGravities(10.0), noDrift).failure());
+        assertEquals(CalibrationFailure.TOO_MUCH_MOVEMENT, runCalibration(slouchGravities(10.0), CFG).failure());
+        // 3 deg over 10 s: first and last 2 s means are 2.4 deg apart, under the 3 deg limit.
+        assertNull(runCalibration(slouchGravities(3.0), CFG).failure());
+        assertEquals(CalibrationFailure.TOO_MUCH_MOVEMENT, runCalibration(slouchGravities(4.0), CFG).failure());
+    }
+
+    @Test
+    void driftWindowsIncludeTheirEdgesAndUseTimestamps() {
+        // Samples at t = 0, 1, 2, ..., 10 s: 0 deg up to t = 2 s, then 10 deg from t = 3 s.
+        List<Vec3> gs = new ArrayList<>();
+        List<Double> ts = new ArrayList<>();
+        for (int i = 0; i <= 10; i++) {
+            gs.add(gFor(i <= 2 ? 0.0 : 10.0));
+            ts.add((double) i);
+        }
+        assertApprox(10.0, CalibrationService.driftDegrees(gs, ts, 2.0), 1e-9);  // first window t = 0..2 (edge included)
+        assertApprox(7.5, CalibrationService.driftDegrees(gs, ts, 3.0), 0.05);  // mean of 0, 0, 0, 10 is ~2.5 deg
+        assertApprox(0.0, CalibrationService.driftDegrees(List.of(gFor(5.0)), List.of(4.0), 2.0), 1e-12);
+    }
+
     @Test
     void quantileComparisonToleratesRounding() {
         assertTrue(CalibrationService.hasEnoughInliers(225, 250, 0.9));

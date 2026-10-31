@@ -17,6 +17,8 @@ public record PostureConfiguration(
         double calibrationDuration,
         double calibrationMaxSpreadDegrees,
         double calibrationSpreadQuantile,
+        double calibrationMaxDriftDegrees,
+        double calibrationDriftWindow,
         int minimumCalibrationSamples,
         double forwardThresholdDegrees,
         double backwardThresholdDegrees,
@@ -41,6 +43,8 @@ public record PostureConfiguration(
             Map.entry("calibrationDuration", (b, v) -> b.calibrationDuration(v.asDouble())),
             Map.entry("calibrationMaxSpreadDegrees", (b, v) -> b.calibrationMaxSpreadDegrees(v.asDouble())),
             Map.entry("calibrationSpreadQuantile", (b, v) -> b.calibrationSpreadQuantile(v.asDouble())),
+            Map.entry("calibrationMaxDriftDegrees", (b, v) -> b.calibrationMaxDriftDegrees(v.asDouble())),
+            Map.entry("calibrationDriftWindow", (b, v) -> b.calibrationDriftWindow(v.asDouble())),
             Map.entry("minimumCalibrationSamples", (b, v) -> b.minimumCalibrationSamples(v.asInt())),
             Map.entry("forwardThresholdDegrees", (b, v) -> b.forwardThresholdDegrees(v.asDouble())),
             Map.entry("backwardThresholdDegrees", (b, v) -> b.backwardThresholdDegrees(v.asDouble())),
@@ -117,6 +121,8 @@ public record PostureConfiguration(
         private double calibrationDuration = 10.0;
         private double calibrationMaxSpreadDegrees = 5.0;
         private double calibrationSpreadQuantile = 0.9;
+        private double calibrationMaxDriftDegrees = 3.0;
+        private double calibrationDriftWindow = 2.0;
         private int minimumCalibrationSamples = 100;
         private double forwardThresholdDegrees = 15.0;
         private double backwardThresholdDegrees = 20.0;
@@ -139,6 +145,8 @@ public record PostureConfiguration(
             calibrationDuration = c.calibrationDuration;
             calibrationMaxSpreadDegrees = c.calibrationMaxSpreadDegrees;
             calibrationSpreadQuantile = c.calibrationSpreadQuantile;
+            calibrationMaxDriftDegrees = c.calibrationMaxDriftDegrees;
+            calibrationDriftWindow = c.calibrationDriftWindow;
             minimumCalibrationSamples = c.minimumCalibrationSamples;
             forwardThresholdDegrees = c.forwardThresholdDegrees;
             backwardThresholdDegrees = c.backwardThresholdDegrees;
@@ -159,6 +167,8 @@ public record PostureConfiguration(
         public Builder calibrationDuration(double v) { calibrationDuration = v; return this; }
         public Builder calibrationMaxSpreadDegrees(double v) { calibrationMaxSpreadDegrees = v; return this; }
         public Builder calibrationSpreadQuantile(double v) { calibrationSpreadQuantile = v; return this; }
+        public Builder calibrationMaxDriftDegrees(double v) { calibrationMaxDriftDegrees = v; return this; }
+        public Builder calibrationDriftWindow(double v) { calibrationDriftWindow = v; return this; }
         public Builder minimumCalibrationSamples(int v) { minimumCalibrationSamples = v; return this; }
         public Builder forwardThresholdDegrees(double v) { forwardThresholdDegrees = v; return this; }
         public Builder backwardThresholdDegrees(double v) { backwardThresholdDegrees = v; return this; }
@@ -177,7 +187,8 @@ public record PostureConfiguration(
 
         public PostureConfiguration build() {
             return new PostureConfiguration(calibrationDuration, calibrationMaxSpreadDegrees,
-                    calibrationSpreadQuantile, minimumCalibrationSamples, forwardThresholdDegrees,
+                    calibrationSpreadQuantile, calibrationMaxDriftDegrees, calibrationDriftWindow,
+                    minimumCalibrationSamples, forwardThresholdDegrees,
                     backwardThresholdDegrees, lateralThresholdDegrees, hysteresisDegrees, sustainedDuration,
                     reminderCooldown, smoothingTimeConstant, maxProcessingRateHz, maxSampleGap, axes,
                     axisCalibrationDuration, axisCalibrationMinimumNodDegrees, axisCalibrationMaxYawDegrees,

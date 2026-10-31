@@ -10,6 +10,12 @@ import AlignCore
 /// at least `calibrationSpreadQuantile` of the samples (1.0 = the v1 rule "every sample").
 /// Baseline = normalized mean of the inliers, so a brief fidget does not bias it; when every
 /// sample is an inlier this is exactly `m`, identical to v1.
+///
+/// Drift rule (D-020), checked after the spread rule: fails with `.tooMuchMovement` if the
+/// normalized mean gravity of the samples in the first `calibrationDriftWindow` seconds
+/// (t − start ≤ window) and that of the samples in the last `calibrationDriftWindow` seconds
+/// (last − t ≤ window) are more than `calibrationMaxDriftDegrees` apart. It catches a slow slouch,
+/// which the spread rule cannot (every sample stays near the mean of the ramp).
 /// Mirrors `CalibrationService` in `analytics/align-tools`.
 public struct CalibrationService: Sendable {
     public enum Step: Equatable, Sendable {
@@ -22,6 +28,7 @@ public struct CalibrationService: Sendable {
     public private(set) var startTimestamp: TimeInterval?
     public private(set) var lastTimestamp: TimeInterval?
     private var samples: [Vector3] = []
+    private var timestamps: [TimeInterval] = []
 
     public init() {}
 
@@ -32,6 +39,7 @@ public struct CalibrationService: Sendable {
         startTimestamp = nil
         lastTimestamp = nil
         samples = []
+        timestamps = []
     }
 
     public mutating func cancel() {
@@ -39,6 +47,28 @@ public struct CalibrationService: Sendable {
         startTimestamp = nil
         lastTimestamp = nil
         samples = []
+        timestamps = []
+    }
+
+    /// Angle (degrees) between the normalized mean of the samples with t − first ≤ window and that
+    /// of the samples with last − t ≤ window (D-020). `gravities` and `times` are non-empty and
+    /// parallel; times are in increasing order.
+    public static func driftDegrees(_ gravities: [Vector3], times: [TimeInterval], window: TimeInterval) -> Double {
+        guard let first = times.first, let last = times.last else {
+            return 0
+        }
+        var head = Vector3.zero
+        var tail = Vector3.zero
+        for (i, g) in gravities.enumerated() where i < times.count {
+            let t = times[i]
+            if t - first <= window + PostureDetectionConstants.timeEpsilon {
+                head = head + g
+            }
+            if last - t <= window + PostureDetectionConstants.timeEpsilon {
+                tail = tail + g
+            }
+        }
+        return TiltEstimator.angleDegrees(between: head.normalized, and: tail.normalized)
     }
 
     /// 0...1 while active; 0 before the first sample.
@@ -59,6 +89,7 @@ public struct CalibrationService: Sendable {
         }
         lastTimestamp = timestamp
         samples.append(gravity)
+        timestamps.append(timestamp)
         let elapsed = timestamp - (startTimestamp ?? timestamp)
         let duration = configuration.calibrationDuration
         if elapsed + PostureDetectionConstants.timeEpsilon < duration {
@@ -66,6 +97,7 @@ public struct CalibrationService: Sendable {
         }
 
         let collected = samples
+        let times = timestamps
         cancel()
         let count = collected.count
         if count < configuration.minimumCalibrationSamples {
@@ -89,6 +121,10 @@ public struct CalibrationService: Sendable {
             }
         }
         if !CalibrationService.hasEnoughInliers(inliers, of: count, quantile: configuration.calibrationSpreadQuantile) {
+            return .failed(.tooMuchMovement, sampleCount: count)
+        }
+        let drift = CalibrationService.driftDegrees(collected, times: times, window: configuration.calibrationDriftWindow)
+        if !(drift <= configuration.calibrationMaxDriftDegrees) {
             return .failed(.tooMuchMovement, sampleCount: count)
         }
         let baselineGravity = inliers == count ? mean : inlierTotal.normalized

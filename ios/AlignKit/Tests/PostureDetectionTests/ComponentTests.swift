@@ -143,6 +143,35 @@ final class CalibrationServiceTests: XCTestCase {
         XCTAssertEqual(finalStep(gs, config), finalStep(gs, v1))
     }
 
+    /// 251 samples (10 s at 25 Hz) of a steady slouch from 0 to `degrees` forward.
+    private func slouchGravities(_ degrees: Double) -> [Vector3] {
+        (0..<251).map { i in Pose.gravity(forward: degrees * Double(i) / 250, lateral: 0.5) }
+    }
+
+    /// D-020: a steady 10° slouch passes the spread rule but fails the drift rule.
+    func testDriftRejectsASlowSlouch() {
+        var noDrift = config
+        noDrift.calibrationMaxDriftDegrees = 180
+        guard case .succeeded? = finalStep(slouchGravities(10), noDrift) else {
+            return XCTFail("expected the spread rule alone to accept the slouch")
+        }
+        XCTAssertEqual(finalStep(slouchGravities(10), config), .failed(.tooMuchMovement, sampleCount: 251))
+        // 3° over 10 s: the first and last 2 s means are 2.4° apart, under the 3° limit.
+        guard case .succeeded? = finalStep(slouchGravities(3), config) else {
+            return XCTFail("expected a 3° slouch to pass")
+        }
+        XCTAssertEqual(finalStep(slouchGravities(4), config), .failed(.tooMuchMovement, sampleCount: 251))
+    }
+
+    func testDriftWindowsIncludeTheirEdgesAndUseTimestamps() {
+        // Samples at t = 0, 1, ..., 10 s: 0° up to t = 2 s, then 10° from t = 3 s.
+        let gs = (0...10).map { i in Pose.gravity(forward: i <= 2 ? 0 : 10) }
+        let ts = (0...10).map { Double($0) }
+        XCTAssertEqual(CalibrationService.driftDegrees(gs, times: ts, window: 2), 10, accuracy: 1e-9)
+        XCTAssertEqual(CalibrationService.driftDegrees(gs, times: ts, window: 3), 7.5, accuracy: 0.05)
+        XCTAssertEqual(CalibrationService.driftDegrees([Pose.gravity(forward: 5)], times: [4], window: 2), 0, accuracy: 1e-12)
+    }
+
     func testQuantileComparisonToleratesRounding() {
         XCTAssertTrue(CalibrationService.hasEnoughInliers(225, of: 250, quantile: 0.9))
         XCTAssertFalse(CalibrationService.hasEnoughInliers(224, of: 250, quantile: 0.9))
