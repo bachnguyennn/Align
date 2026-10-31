@@ -1,0 +1,9 @@
+# Test profile. By default the suite uses an in-memory H2 database in PostgreSQL mode, so
+# `./mvnw verify` needs no Docker. CI sets ALIGN_TEST_DATABASE_URL (plus username/password) to
+# run the same suite against a real PostgreSQL 16 service container; ALIGN_TEST_EXPECT_DATABASE
+# makes DatabaseEngineTest fail if the suite silently fell back to H2.
+spring:
+  datasource:
+    url: ${ALIGN_TEST_DATABASE_URL:jdbc:h2:mem:align;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1}
+    username: ${ALIGN_TEST_DATABASE_USERNAME:sa}
+    password: ${ALIGN_TEST_DATABASE_PASSWORD:}
