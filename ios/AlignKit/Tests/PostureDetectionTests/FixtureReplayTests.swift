@@ -21,6 +21,8 @@ struct FixtureConfig: Decodable {
     let calibrationDuration: Double?
     let calibrationMaxSpreadDegrees: Double?
     let calibrationSpreadQuantile: Double?
+    let calibrationMaxDriftDegrees: Double?
+    let calibrationDriftWindow: Double?
     let minimumCalibrationSamples: Int?
     let forwardThresholdDegrees: Double?
     let backwardThresholdDegrees: Double?
@@ -43,6 +45,8 @@ struct FixtureConfig: Decodable {
         if let v = calibrationDuration { c.calibrationDuration = v }
         if let v = calibrationMaxSpreadDegrees { c.calibrationMaxSpreadDegrees = v }
         if let v = calibrationSpreadQuantile { c.calibrationSpreadQuantile = v }
+        if let v = calibrationMaxDriftDegrees { c.calibrationMaxDriftDegrees = v }
+        if let v = calibrationDriftWindow { c.calibrationDriftWindow = v }
         if let v = minimumCalibrationSamples { c.minimumCalibrationSamples = v }
         if let v = forwardThresholdDegrees { c.forwardThresholdDegrees = v }
         if let v = backwardThresholdDegrees { c.backwardThresholdDegrees = v }
@@ -330,6 +334,7 @@ final class FixtureReplayTests: XCTestCase {
         "nod_axis_calibration_sideways_rejected",
         "nod_axis_calibration_no_nod",
         "calibration_brief_fidget",
+        "calibration_slow_slouch",
     ]
 
     func testFixtureDirectoryContainsAllFixtures() throws {
@@ -360,6 +365,15 @@ final class FixtureReplayTests: XCTestCase {
     func testNodAxisCalibrationSidewaysRejected() throws { try check("nod_axis_calibration_sideways_rejected") }
     func testNodAxisCalibrationNoNod() throws { try check("nod_axis_calibration_no_nod") }
     func testCalibrationBriefFidget() throws { try check("calibration_brief_fidget") }
+    func testCalibrationSlowSlouch() throws { try check("calibration_slow_slouch") }
+
+    /// The slow-slouch fixture is about D-020: only the drift rule rejects it.
+    func testSlowSlouchFixtureIsRejectedByTheDriftRule() throws {
+        let fixture = try FixtureReplay.load("calibration_slow_slouch")
+        var noDrift = fixture.config?.configuration() ?? .default
+        noDrift.calibrationMaxDriftDegrees = 180
+        XCTAssertEqual(FixtureReplay.replay(fixture, configuration: noDrift).calibrationOutcomes, ["succeeded"])
+    }
 
     /// The fidget fixture is about D-017 (b): the v1 rule (quantile 1.0) rejects it.
     func testBriefFidgetFixtureFailsTheV1Rule() throws {

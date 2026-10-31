@@ -769,6 +769,34 @@ public final class Generator {
                 .expected(s -> expected(List.of("succeeded"), List.of(), "neutral"));
     }
 
+    public static ScenarioSpec calibrationSlowSlouch() {
+        return calibrationSlowSlouch(114);
+    }
+
+    public static ScenarioSpec calibrationSlowSlouch(long seed) {
+        return new ScenarioSpec("calibration_slow_slouch",
+                "The user slowly slouches from 0 to 10 deg forward over the 10 s neutral calibration. "
+                        + "Every sample stays within 5 deg of the mean, so the spread rule accepts it, "
+                        + "but the D-020 drift rule (first vs last 2 s more than 3 deg apart) rejects it. "
+                        + "Expect tooMuchMovement.",
+                seed, 15.0)
+                .actions(new ArrayList<>(CALIBRATE_AT_START))
+                .keyframes(slouchKeyframes(10.0, 10.0))
+                .expected(s -> expected(List.of("tooMuchMovement"), List.of(), "needsCalibration"));
+    }
+
+    /**
+     * A steady slouch from 0 to {@code degrees} forward over {@code seconds}, as ten short eased
+     * segments (close to linear, so the samples spread evenly around the mean), then held.
+     */
+    public static List<Keyframe> slouchKeyframes(double degrees, double seconds) {
+        List<Keyframe> out = new ArrayList<>();
+        for (int i = 0; i <= 10; i++) {
+            out.add(new Keyframe(seconds * i / 10.0, degrees * i / 10.0, 0.0));
+        }
+        return out;
+    }
+
     /** Every scenario with its default seed, in file-writing order. */
     public static final Map<String, Supplier<ScenarioSpec>> SCENARIOS = scenarios();
 
@@ -792,6 +820,7 @@ public final class Generator {
         m.put("nod_axis_calibration_sideways_rejected", Generator::nodAxisCalibrationSidewaysRejected);
         m.put("nod_axis_calibration_no_nod", Generator::nodAxisCalibrationNoNod);
         m.put("calibration_brief_fidget", Generator::calibrationBriefFidget);
+        m.put("calibration_slow_slouch", Generator::calibrationSlowSlouch);
         return Collections.unmodifiableMap(m);
     }
 
