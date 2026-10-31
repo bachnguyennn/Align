@@ -98,9 +98,9 @@ All synthetic data comes from the Java generator (`Generator.java`, SplittableRa
 |---|---|
 | 0.5 | 20/20 |
 | 1.0 | 20/20 |
-| 1.5 | 20/20 |
-| 2.0 | 20/20 |
-| 3.0 | 15/20 |
+| 1.5 | 18/20 |
+| 2.0 | 15/20 |
+| 3.0 | 6/20 |
 
 ## Axis projection with earbud mounting offset (noise-free, 20° poses)
 
@@ -143,16 +143,16 @@ All synthetic data comes from the Java generator (`Generator.java`, SplittableRa
 |---|---|---|---|---|
 | 0.5 | 0/20 | 1/20 (yaw err 0.5°, max 0.5°) | 20/20 (yaw err 1.0°, max 3.0°) | 20/20 (yaw err 0.7°, max 2.0°) |
 | 1.0 | 0/20 | 3/20 (yaw err 2.6°, max 5.7°) | 20/20 (yaw err 2.0°, max 5.9°) | 20/20 (yaw err 1.3°, max 4.0°) |
-| 2.0 | 1/20 (yaw err 2.2°, max 2.2°) | 7/20 (yaw err 8.8°, max 18.6°) | 20/20 (yaw err 4.0°, max 11.9°) | 20/20 (yaw err 2.7°, max 8.1°) |
-| 3.0 | 2/16 (yaw err 3.2°, max 3.7°) | 6/16 (yaw err 13.3°, max 28.4°) | 15/16 (yaw err 6.2°, max 18.5°) | 16/16 (yaw err 4.3°, max 12.5°) |
+| 2.0 | 0/12 | 3/12 (yaw err 15.1°, max 18.6°) | 12/12 (yaw err 4.6°, max 11.9°) | 12/12 (yaw err 3.1°, max 8.1°) |
+| 3.0 | 0/8 | 2/8 (yaw err 26.2°, max 28.4°) | 8/8 (yaw err 8.2°, max 18.5°) | 8/8 (yaw err 5.6°, max 12.5°) |
 
 ## D-017 (ii-b): axis line fit methods (20° nods, earbud yaw 20°)
 
 | sway std (°) | principal axis (default) | sign-aligned sum | centred principal axis |
 |---|---|---|---|
 | 0.5 | 20/20, yaw err 1.00° (max 2.94°) | 20/20, yaw err 1.11° (max 3.07°) | 20/20, yaw err 0.86° (max 2.32°) |
-| 2.0 | 20/20, yaw err 3.96° (max 12.59°) | 20/20, yaw err 4.74° (max 13.24°) | 20/20, yaw err 3.61° (max 12.60°) |
-| 3.0 | 19/20, yaw err 6.02° (max 19.88°) | 18/20, yaw err 7.09° (max 21.19°) | 14/20, yaw err 4.60° (max 9.70°) |
+| 2.0 | 15/20, yaw err 3.61° (max 12.59°) | 15/20, yaw err 4.31° (max 13.24°) | 15/20, yaw err 3.98° (max 12.60°) |
+| 3.0 | 9/20, yaw err 4.93° (max 14.08°) | 8/20, yaw err 5.17° (max 16.31°) | 6/20, yaw err 4.70° (max 7.80°) |
 
 ## D-017 (iii): false acceptance during the axis calibration
 
@@ -174,19 +174,33 @@ All synthetic data comes from the Java generator (`Generator.java`, SplittableRa
 |---|---|---|---|---|---|
 | still, sway 0.5° | accepted | 20/20 (0.32°) | 20/20 (0.32°) | 20/20 (0.32°) | 20/20 (0.32°) |
 | still, sway 1.0° | accepted | 20/20 (0.64°) | 20/20 (0.64°) | 20/20 (0.64°) | 20/20 (0.64°) |
-| still, sway 2.0° | accepted | 19/20 (1.21°) | 19/20 (1.21°) | 20/20 (1.26°) | 20/20 (1.26°) |
-| still, sway 3.0° | accepted | 10/20 (1.59°) | 11/20 (1.55°) | 15/20 (1.78°) | 18/20 (1.89°) |
-| still, sway 4.0° | accepted | 3/20 (1.28°) | 5/20 (1.25°) | 7/20 (1.96°) | 11/20 (2.65°) |
-| one 1 s fidget to 10° | accepted | 0/20 | 19/20 (0.53°) | 20/20 (0.52°) | 20/20 (0.52°) |
-| one 1 s fidget to 20° | accepted | 0/20 | 0/20 | 20/20 (0.50°) | 20/20 (0.50°) |
+| still, sway 2.0° | accepted | 14/20 (1.09°) | 14/20 (1.09°) | 14/20 (1.09°) | 14/20 (1.09°) |
+| still, sway 3.0° | accepted | 8/20 (1.78°) | 9/20 (1.71°) | 10/20 (1.68°) | 10/20 (1.68°) |
+| still, sway 4.0° | accepted | 3/20 (1.28°) | 3/20 (1.28°) | 4/20 (1.57°) | 5/20 (2.04°) |
+| one 1 s fidget to 10° | accepted | 0/20 | 17/20 (0.54°) | 18/20 (0.52°) | 18/20 (0.52°) |
+| one 1 s fidget to 20° | accepted | 0/20 | 0/20 | 18/20 (0.51°) | 18/20 (0.51°) |
 | moving: nodding ±9° / ±4° (fixture motion) | rejected | 20/20 | 20/20 | 20/20 | 20/20 |
-| moving: nodding ±6° at 0.3 Hz | rejected | 5/20 (0.34°) | 2/20 (0.32°) | 1/20 (0.32°) | 0/20 (0.36°) |
-| moving: looking around ±6° sideways | rejected | 20/20 | 20/20 | 18/20 (0.76°) | 7/20 (0.55°) |
-| moving: slow slouch 0→10° during calibration | rejected | 16/20 (4.67°) | 14/20 (4.50°) | 9/20 (4.35°) | 3/20 (4.32°) |
+| moving: nodding ±6° at 0.3 Hz | rejected | 17/20 (0.53°) | 17/20 (0.53°) | 17/20 (0.53°) | 17/20 (0.53°) |
+| moving: looking around ±6° sideways | rejected | 20/20 | 20/20 | 20/20 | 20/20 |
+| moving: slow slouch 0→10° during calibration | rejected | 20/20 | 20/20 | 20/20 | 20/20 |
 | moving: two 1.5 s fidgets to 12° | rejected | 20/20 | 20/20 | 20/20 | 20/20 |
+
+## D-020: calibration drift rule (cells: runs rejected with tooMuchMovement; columns: calibrationMaxDriftDegrees / calibrationDriftWindow)
+
+| 10 s neutral calibration | no drift rule | 2° / 2 s | 3° / 2 s (default) | 4° / 2 s | 3° / 1 s | 3° / 3 s |
+|---|---|---|---|---|---|---|
+| slouch 0° over the 10 s (sway 0.5°) | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 |
+| slouch 3° over the 10 s (sway 0.5°) | 0/20 | 16/20 | 4/20 | 0/20 | 6/20 | 2/20 |
+| slouch 5° over the 10 s (sway 0.5°) | 0/20 | 20/20 | 20/20 | 10/20 | 20/20 | 16/20 |
+| slouch 10° over the 10 s (sway 0.5°) | 1/20 | 20/20 | 20/20 | 20/20 | 20/20 | 20/20 |
+| still, sway 0.5° | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 |
+| still, sway 1.0° | 0/20 | 4/20 | 0/20 | 0/20 | 1/20 | 0/20 |
+| still, sway 1.5° | 0/20 | 8/20 | 4/20 | 1/20 | 4/20 | 3/20 |
+| still, sway 2.0° | 0/20 | 12/20 | 7/20 | 4/20 | 9/20 | 4/20 |
+| still, sway 3.0° | 5/20 | 16/20 | 11/20 | 9/20 | 14/20 | 11/20 |
 
 ## Throughput
 
-Java reference: 2551 samples in 1 ms (0.3 µs/sample, HotSpot JVM after the runs above, informational only).
+Java reference: 2551 samples in 1 ms (0.2 µs/sample, HotSpot JVM after the runs above, informational only).
 
-Total runtime: 21 s.
+Total runtime: 20 s.
