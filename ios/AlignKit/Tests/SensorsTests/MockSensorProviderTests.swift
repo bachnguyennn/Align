@@ -147,7 +147,7 @@ final class MockSensorProviderTests: XCTestCase {
     }
 
     @MainActor
-    func testStopWithoutStartIsHarmless() {
+    func testStopWithoutStartIsHarmless() async {
         let provider = MockSensorProvider()
         provider.stop()
         XCTAssertEqual(provider.connectionState, .idle)

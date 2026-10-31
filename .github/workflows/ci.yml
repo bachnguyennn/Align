@@ -179,6 +179,13 @@ jobs:
             | tee "$GITHUB_WORKSPACE/ci-logs/swift-test.log" \
             | xcbeautify --renderer github-actions
 
+      - name: Summarize XCTest results
+        if: always()
+        run: |
+          # xcbeautify's "0 tests" line is the Swift Testing summary; surface XCTest's own.
+          summary="$(grep -E 'Executed [0-9]+ tests?' "$GITHUB_WORKSPACE/ci-logs/swift-test.log" | tail -n 1 || true)"
+          echo "::notice title=XCTest (macOS package)::${summary:-no XCTest summary line found}"
+
       - name: Build package for iOS Simulator (compiles #if os(iOS) code)
         working-directory: ios/AlignKit
         run: |
