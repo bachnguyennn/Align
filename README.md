@@ -64,7 +64,7 @@ CI runs all automated checks on every push. To read results without logging in t
 | "Motion access denied" | Settings → Privacy & Security → Motion & Fitness → Align. |
 | Stuck on "Waiting for AirPods" | Wear both earbuds, make sure they are the active audio route, and reopen the app. |
 | Monitoring pauses when you leave the app | Expected: Align only monitors while it is open (D-010). |
-| Tilt directions look reversed | Use Settings → Diagnostics → axis check, and report the result — the axis convention is unverified on hardware (D-011). |
+| Tilt directions look reversed | Use Settings → Diagnostics → axis check, and report the result — the axis convention is unverified on hardware (D-011). The guided nod after calibration learns the forward axis for your earbud fit (D-017); redo it in Settings → Neutral position. |
 | No reminders | Check notifications are allowed, the sensitivity preset, and that the cooldown hasn't just fired. |
 | `xcodegen: command not found` | `brew install xcodegen` |
 
@@ -72,4 +72,6 @@ CI runs all automated checks on every push. To read results without logging in t
 
 - Foreground-only monitoring; background and locked-screen behavior is documented as unverified.
 - Axis signs, real sample rate and battery use are unverified until the hardware test (S-05).
-- Detection thresholds are experimental, not medically validated.
+- Detection thresholds are experimental, not medically validated. To help tune them on real
+  data, Diagnostics can record a short motion session to a file you share yourself
+  ([`TESTING.md`](TESTING.md) section 6); Align never uploads it.

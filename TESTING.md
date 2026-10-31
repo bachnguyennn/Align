@@ -1,7 +1,8 @@
 # Try Align on your iPhone
 
 A step-by-step guide for the first hardware test: install the app from Xcode, check that the
-AirPods axes are right, and see a reminder fire. About **30 minutes** the first time.
+AirPods axes are right, and see a reminder fire. About **30 minutes** the first time, plus
+about 10 minutes for the optional recordings in section 6.
 
 The full protocol (every case, battery, offline, privacy) is in
 [`docs/agents/test-plan.md`](docs/agents/test-plan.md). This page is the short version.
@@ -75,17 +76,28 @@ To avoid waiting 5 minutes between reminders, first go to **Settings → Reminde
 and set it to **2 minutes**. Keep **Sensitivity** on **Balanced** (15°, 30 s).
 
 1. **Home → Calibrate → Start calibration.** Sit upright, look ahead, keep still for 10 s.
-   Expected: progress fills and it succeeds.
-2. **Home → Start monitoring**, then open **Live view**.
-3. **Glance test:** look down at your lap for 3–5 s, then back up. Repeat a few times.
+   Expected: progress fills and it says "Neutral position saved".
+2. **Nod step.** Tap **Start the nod**, then nod slowly once: chin down about 20–30°, then back
+   up (about a second each way). Expected: "All set". If it says it didn't see a nod, try a
+   slightly bigger, slower nod; if it says it looked like a sideways tilt, nod straight down and
+   up. Write down how many tries it took.
+   Then open **Settings → Diagnostics → Tilt axes in use** and write down **Axes** (should be
+   "Learned from your nod") and **Learned yaw vs default** (how far your AirPods sit turned in
+   your ears; anything from about −30° to +30° is plausible).
+3. **Home → Start monitoring**, then open **Live view**.
+4. **Glance test:** look down at your lap for 3–5 s, then back up. Repeat a few times.
    Expected: it may briefly show "Tilting forward", but **no reminder**.
-4. **Slouch test:** lean your head forward (like reading a phone on the desk) and **hold 45 s**.
+5. **Slouch test:** lean your head forward (like reading a phone on the desk) and **hold 45 s**.
    Expected: about **30 s** after you cross the line you get **one** reminder (haptic, plus a
    banner). Time it if you can.
-5. **Keep holding** another minute. Expected: **no second reminder**.
-6. **Sit back up.** Expected: back to neutral. **History** shows one forward tilt.
-7. **Side test:** right ear toward right shoulder, hold 45 s (wait until 2 min after the last
+6. **Keep holding** another minute. Expected: **no second reminder**.
+7. **Sit back up.** Expected: back to neutral. **History** shows one forward tilt.
+8. **Side test:** right ear toward right shoulder, hold 45 s (wait until 2 min after the last
    reminder). Expected: one reminder for a right tilt.
+
+The nod is optional: **Skip** keeps the default axes. **Settings → Neutral position** shows which
+axes are in use and has **Redo nod** and **Use default axes**. A new calibration always starts
+again from the default axes, so do the nod each time you recalibrate.
 
 ## 5. Disconnects and leaving the app (~5 min)
 
@@ -99,7 +111,33 @@ and set it to **2 minutes**. Keep **Sensitivity** on **Balanced** (15°, 30 s).
 
 Align only monitors while it's open on screen. That's expected for this version.
 
-## 6. Report back
+If the AirPods stay connected but stop sending motion, Align notices after about 1.5 s: the
+screen shows "No sensor data" instead of an old tilt, and **Diagnostics → Stalls since launch**
+counts it. Note it if you ever see that number go up.
+
+## 6. Record a session for tuning (~10 min, optional but very useful)
+
+Real head motion is the only way to tune Align beyond simulated data. Diagnostics can record a
+short session to a file that **you** share; Align never uploads it, and the file is deleted when
+you leave the Diagnostics screen.
+
+1. Calibrate and do the nod first (section 4), so the recording includes your baseline.
+2. **Settings → Diagnostics → Record motion.** Read the note, choose **2 min**, and type a short
+   note about what you'll do (no names), e.g. "sitting upright at desk".
+3. Tap **Start recording** and do just that for 2 minutes. Stay on the Diagnostics screen; the
+   recording stops early if you leave the app or the AirPods disconnect. You can also tap
+   **Calibrate neutral now** or **Nod now** during a recording to capture a calibration.
+4. When it says **Recording ready**, tap **Share recording** and save it somewhere you can reach
+   from your computer (AirDrop, Files, Mail to yourself).
+5. Repeat for three sessions, each with its own note:
+   - sitting upright at a desk,
+   - slouching at a desk (head drifting forward as when reading a laptop),
+   - looking down at a phone in your hands.
+6. Attach the three `.json` files to your hardware test issue (section 7); zip them if GitHub
+   refuses the upload. They contain only motion values, your calibration and settings, the app
+   version, the iPhone model identifier (e.g. `iPhone16,1`, not your phone's name) and your note.
+
+## 7. Report back
 
 Open a GitHub issue using the **Hardware test report** template
 ([new issue](https://github.com/bachnguyennn/FixMySpine/issues/new?template=hardware-test.md))
@@ -110,7 +148,9 @@ Things that are especially useful:
 
 - The axis check table and upright gravity numbers
 - Sample rate and largest gap from Diagnostics
+- Whether the nod worked (and after how many tries) and the learned yaw
 - Seconds from slouching to the reminder
+- The recordings from section 6
 - Anything that felt wrong, confusing, or annoying
 
 ## Troubleshooting
@@ -125,3 +165,5 @@ Things that are especially useful:
 | "Motion access denied" | Settings → Privacy & Security → Motion & Fitness → Align on |
 | No reminder banner | Settings → Notifications → Align → Allow; Focus/Do Not Disturb can hide it |
 | Want to test without AirPods | Settings → Privacy & data → Demo mode (simulated head motion) |
+| Nod never recognized | Nod slower and a bit deeper (20–30°), straight down and up; or tap Skip (default axes) |
+| "Share recording" missing | The recording needs at least one sample: AirPods connected, stay on Diagnostics |

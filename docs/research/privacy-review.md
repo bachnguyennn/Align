@@ -26,7 +26,7 @@ D-010 (foreground-only MVP).
 | Data | Source | Stored where | Retention | Leaves device? | Purpose | Sensitivity |
 |---|---|---|---|---|---|---|
 | Raw `MotionSample` (attitude, gravity, rotation rate, user acceleration, timestamp, earbud) | AirPods via `CMHeadphoneMotionManager` | **Memory only** (pipeline, live view, Diagnostics) | Until the next sample / screen closes | No | Tilt estimation | Medium: continuous motion can reveal activity patterns |
-| Developer motion recording (optional, for fixtures) | Same | App sandbox file, only behind an explicit developer toggle | Until deleted | Only if the developer shares it manually | Building replay fixtures | Medium; must not exist in release builds (see R-03) |
+| Diagnostic motion recording (opt-in, D-017 (d); implemented in F-11, see §10) | Same, plus the baseline, configuration, calibration actions, app version, iPhone model identifier, the user's note | Memory while recording, then one file in the app's temporary folder | Until the user leaves Diagnostics, starts another recording, or relaunches the app | Only if the user shares it via the share sheet | Tuning on real data | Medium (see §10, R-03) |
 | `NeutralBaseline` (mean gravity vector, `capturedAt`, sample count, version) | Calibration | UserDefaults (JSON) | Until recalibration or delete-all | No | Reference posture | Low |
 | `PostureConfiguration`, sensitivity preset, reminder/sound/haptic flags, demo-mode flag | User settings | UserDefaults (JSON / scalars) | Until changed or delete-all | No | Behavior | Low |
 | `MonitoringSession` (start/end, monitored/within-threshold/sustained seconds, reminder count, calibration version, sensor status) | Computed | SwiftData store in app sandbox | Until the user deletes it (no automatic expiry in v1) | No | History, daily summaries | Medium: daily posture/usage history |
@@ -100,7 +100,7 @@ Owner: Frontend (F-01/F-09); the Lead should add it to the task board.
 | SwiftData sessions + events | Yes (delete all `MonitoringSession`; events cascade) | Yes |
 | `NeutralBaseline` in UserDefaults | Yes | Yes |
 | Settings in UserDefaults | Screen must say whether settings are kept or reset | Yes |
-| Developer motion recordings | Yes, if the toggle ever existed in this build | Yes |
+| Diagnostic motion recording (temporary file, §10) | Not needed: deleted on leaving Diagnostics, on a new recording and at launch | Yes |
 | Pending/delivered notifications | Should be removed (`removeAllPendingNotificationRequests`, `removeAllDeliveredNotifications`) | Yes |
 | Device / iCloud backups | No (outside the app's control; mention in privacy text) | No |
 
@@ -195,4 +195,45 @@ attitude, the `NeutralBaseline`, learned axes, diagnostic motion recordings (D-0
 | R-13 | Token leaked from device or logs gives full access to that device's history | Medium | Keychain storage (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), TLS only, no logging; future token rotation endpoint |
 | R-14 | Unauthenticated `POST /devices` abused to fill the database | Medium (availability) | Rate limiting / App Attest before any public deployment |
 | R-15 | Erased data survives in database backups | Low | Short backup retention, documented in the privacy policy |
+
+## 10. Diagnostic motion recording (D-017 (d), F-11)
+
+Added by the Frontend agent. D-017 (d) makes a narrow, user-initiated exception to D-007 so the
+algorithm can be tuned on real head motion. What the app does:
+
+- **Only on an explicit action**: Settings → Diagnostics → Record motion → Start recording, for
+  30 s, 1 min or 2 min. Before the button the screen says that raw head motion is recorded only
+  for this export, stays on the iPhone unless the user shares it, is deleted when they leave the
+  screen, and is never uploaded by Align. Nothing is ever recorded automatically.
+- **Contents** (the recording JSON format in `shared/fixtures/README.md`): every `MotionSample`
+  received while recording (timestamp, attitude, gravity, rotation rate; not user acceleration or
+  the earbud side), the baseline (gravity, version, sample count, learned axes) and detection
+  configuration at the start, the calibration actions taken during the recording (neutral
+  calibration, nod, cancel, clear learned axes, cooldown reset, interrupts), and a `recording`
+  block: app version, **hardware model identifier** (e.g. `iPhone16,1`, from `uname`; never the
+  user-assigned device name), `headphones` = `"unknown"` (Core Motion does not name the model; the
+  audio route's port name is user-assigned, e.g. "Alex's AirPods", so it is deliberately not
+  read), an optional free-text note, and the creation time in UTC. No location, names, account or
+  device identifiers.
+- **Storage**: samples are kept in memory while recording (capped), then written once to
+  `tmp/AlignMotionRecordings/<name>.json` with complete file protection. Nothing is written to
+  SwiftData or UserDefaults (unit-tested).
+- **Sharing**: only through the system share sheet (`ShareLink`), chosen by the user. The app has
+  no network code (G-01 still holds).
+- **Deletion**: the folder is deleted when the user leaves Diagnostics, starts a new recording,
+  taps Delete recording, and at every app launch (in case the app was terminated while a file
+  existed). Recording stops when the AirPods disconnect, the stream stops or the app goes to the
+  background (whatever was captured can still be shared or deleted).
+- **Release builds**: the recorder is not behind `#if DEBUG`; D-017 asks for it in Diagnostics
+  for hardware testers. R-02's "compiled only under `#if DEBUG`" is replaced by the controls
+  above — Lead to confirm before an App Store build (it could also be hidden behind a developer
+  toggle there).
+- **Privacy label**: unchanged ("Data Not Collected"): the developer receives a recording only if
+  the user chooses to send it outside the app, which is not collection by the app.
+- **Privacy manifest**: no new required-reason API. The recorder uses `ProcessInfo.systemUptime`
+  (already declared, `35F9.1`, elapsed time), `FileManager` create/write/remove/`fileExists`
+  (not file-timestamp APIs; no creation or modification dates are read) and `uname` (not on
+  Apple's list). The sample watchdog uses `systemUptime` for elapsed time as well.
+- **Shared recordings in the repo**: `shared/fixtures/recordings/README.md` (consent, no names in
+  notes). This is R-03.
 
