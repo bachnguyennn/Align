@@ -111,8 +111,10 @@ public final class PostureMonitor {
 - Neutral calibration: `.tooMuchMovement` unless at least `calibrationSpreadQuantile` of the
   samples are within `calibrationMaxSpreadDegrees` of the mean (1.0 = v1 rule).
 - Neutral calibration drift (D-020): also `.tooMuchMovement` if the normalized mean gravity of the
-  samples in the first `calibrationDriftWindow` seconds and of those in the last
-  `calibrationDriftWindow` seconds are more than `calibrationMaxDriftDegrees` apart.
+  spread-rule inliers (samples within `calibrationMaxSpreadDegrees` of the mean) in the first
+  `calibrationDriftWindow` seconds and of those in the last `calibrationDriftWindow` seconds are
+  more than `calibrationMaxDriftDegrees` apart, so a brief fidget at either end does not count as
+  drift. A window with no inliers fails as `.tooMuchMovement`.
 
 Internal components (public for testing): `MotionFilter`, `CalibrationService`, `PostureDetector`,
 `ReminderDecisionEngine`.
