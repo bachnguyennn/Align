@@ -1,6 +1,7 @@
 package com.bachnguyennn.align.reference;
 
 import static com.bachnguyennn.align.reference.Geometry.add;
+import static com.bachnguyennn.align.reference.Geometry.cross;
 import static com.bachnguyennn.align.reference.Geometry.gravityInHeadFrame;
 import static com.bachnguyennn.align.reference.Geometry.quatFromAxisAngle;
 import static com.bachnguyennn.align.reference.Geometry.quatFromRotationVector;
@@ -39,14 +40,64 @@ public final class Pose {
     /** {@code axes} null means {@link HeadAxisConvention#DEFAULT}. */
     public static Quat poseAttitude(double forwardDeg, double lateralDeg, double headingDeg,
                                     double mountPitchDeg, double mountRollDeg, HeadAxisConvention axes) {
+        return poseAttitude(forwardDeg, lateralDeg, headingDeg, mountPitchDeg, mountRollDeg, 0.0, axes);
+    }
+
+    /**
+     * With an earbud mount yaw (D-017): Mount = Yaw(mountYaw about the head's up axis,
+     * {@code lateralAxis x forwardAxis}) * Pitch * Roll. A head nod then appears in the device
+     * frame about an axis rotated by {@code mountYawDeg} (positive = a right-hand rotation about
+     * the baseline gravity, i.e. toward the default lateral axis, which is the sign of
+     * {@link AxisCalibrationService#signedYawDegrees}). {@code mountYawDeg = 0} gives exactly the
+     * same quaternion as without it.
+     */
+    public static Quat poseAttitude(double forwardDeg, double lateralDeg, double headingDeg,
+                                    double mountPitchDeg, double mountRollDeg, double mountYawDeg,
+                                    HeadAxisConvention axes) {
         HeadAxisConvention a = axes != null ? axes : HeadAxisConvention.DEFAULT;
         Vec3 rv = add(scale(a.forwardAxis(), forwardDeg * RAD), scale(a.lateralAxis(), lateralDeg * RAD));
         Quat tilt = quatFromRotationVector(rv);
         Quat yaw = quatFromAxisAngle(WORLD_UP, headingDeg * RAD);
+        Quat mount = mountAttitude(mountPitchDeg, mountRollDeg, mountYawDeg, a);
+        return quatNormalized(quatMul(quatMul(yaw, tilt), mount));
+    }
+
+    /** The head-to-device mount rotation of {@link #poseAttitude}. */
+    public static Quat mountAttitude(double mountPitchDeg, double mountRollDeg, double mountYawDeg,
+                                     HeadAxisConvention axes) {
+        HeadAxisConvention a = axes != null ? axes : HeadAxisConvention.DEFAULT;
         Quat mount = quatMul(
                 quatFromAxisAngle(a.forwardAxis(), mountPitchDeg * RAD),
                 quatFromAxisAngle(a.lateralAxis(), mountRollDeg * RAD));
-        return quatNormalized(quatMul(quatMul(yaw, tilt), mount));
+        if (mountYawDeg != 0.0) {
+            Vec3 headUp = cross(a.lateralAxis(), a.forwardAxis());
+            mount = quatMul(quatFromAxisAngle(headUp, mountYawDeg * RAD), mount);
+        }
+        return mount;
+    }
+
+    /**
+     * The true head axes as seen in the device frame for a given mount (what a perfect guided nod
+     * learns): the head's forward/lateral axes rotated into the device frame and projected onto
+     * the plane perpendicular to the neutral gravity.
+     */
+    public static HeadAxisConvention trueDeviceAxes(double mountPitchDeg, double mountRollDeg, double mountYawDeg,
+                                                    HeadAxisConvention axes) {
+        HeadAxisConvention a = axes != null ? axes : HeadAxisConvention.DEFAULT;
+        Quat mountInverse = Geometry.quatConj(mountAttitude(mountPitchDeg, mountRollDeg, mountYawDeg, a));
+        Vec3 g0 = gravityInHeadFrame(poseAttitude(0, 0, 0, mountPitchDeg, mountRollDeg, mountYawDeg, a));
+        return new HeadAxisConvention(
+                Tilt.baselinePlaneAxis(Geometry.quatRotate(mountInverse, a.forwardAxis()), g0),
+                Tilt.baselinePlaneAxis(Geometry.quatRotate(mountInverse, a.lateralAxis()), g0));
+    }
+
+    /** Signed yaw (degrees) of {@link #trueDeviceAxes}' forward axis from {@code axes}' (see AxisCalibrationService). */
+    public static double trueYawDegrees(double mountPitchDeg, double mountRollDeg, double mountYawDeg,
+                                        HeadAxisConvention axes) {
+        HeadAxisConvention a = axes != null ? axes : HeadAxisConvention.DEFAULT;
+        Vec3 g0 = gravityInHeadFrame(poseAttitude(0, 0, 0, mountPitchDeg, mountRollDeg, mountYawDeg, a));
+        return AxisCalibrationService.signedYawDegrees(
+                trueDeviceAxes(mountPitchDeg, mountRollDeg, mountYawDeg, a).forwardAxis(), g0, a);
     }
 
     public static MotionSample poseSample(double t) {
@@ -68,7 +119,14 @@ public final class Pose {
     public static MotionSample poseSample(double t, double forwardDeg, double lateralDeg, double headingDeg,
                                           double mountPitchDeg, double mountRollDeg, boolean includeGravity,
                                           HeadAxisConvention axes) {
-        Quat q = poseAttitude(forwardDeg, lateralDeg, headingDeg, mountPitchDeg, mountRollDeg, axes);
+        return poseSample(t, forwardDeg, lateralDeg, headingDeg, mountPitchDeg, mountRollDeg, 0.0, includeGravity,
+                axes);
+    }
+
+    public static MotionSample poseSample(double t, double forwardDeg, double lateralDeg, double headingDeg,
+                                          double mountPitchDeg, double mountRollDeg, double mountYawDeg,
+                                          boolean includeGravity, HeadAxisConvention axes) {
+        Quat q = poseAttitude(forwardDeg, lateralDeg, headingDeg, mountPitchDeg, mountRollDeg, mountYawDeg, axes);
         Vec3 g = includeGravity ? gravityInHeadFrame(q) : null;
         return new MotionSample(t, q, g);
     }

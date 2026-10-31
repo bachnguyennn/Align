@@ -147,6 +147,63 @@ class ComponentsTest {
         assertEquals(51, run.used());
     }
 
+    /** 251 samples (10 s at 25 Hz) at neutral, with {@code fidget} samples at 10 deg forward from index 100. */
+    private static List<Vec3> fidgetGravities(int fidget) {
+        List<Vec3> gs = new ArrayList<>();
+        for (int i = 0; i < 251; i++) {
+            gs.add(i >= 100 && i < 100 + fidget ? gFor(10.0) : gFor(0.0, 0.5));
+        }
+        return gs;
+    }
+
+    private static CalibrationStep runCalibration(List<Vec3> gravities, PostureConfiguration config) {
+        CalibrationService c = new CalibrationService();
+        c.begin();
+        CalibrationStep step = null;
+        for (int i = 0; i < gravities.size(); i++) {
+            step = c.add(gravities.get(i), i / 25.0, config);
+            if (step.finished()) {
+                break;
+            }
+        }
+        return step;
+    }
+
+    /** D-017 (b): a brief fidget fails the v1 rule (quantile 1.0) but passes 0.9, without biasing the baseline. */
+    @Test
+    void calibrationQuantileToleratesABriefFidgetAndUsesTheInlierMean() {
+        List<Vec3> gs = fidgetGravities(20);  // 0.8 s = 8 % of the samples
+        PostureConfiguration v1 = CFG.replacing(b -> b.calibrationSpreadQuantile(1.0));
+        assertEquals(CalibrationFailure.TOO_MUCH_MOVEMENT, runCalibration(gs, v1).failure());
+        CalibrationStep step = runCalibration(gs, CFG);
+        assertNull(step.failure());
+        assertApprox(0.0, angleBetweenDegrees(step.meanGravity(), gFor(0.0, 0.5)), 1e-9);
+        // 30 samples (12 %) are too many for 0.9.
+        assertEquals(CalibrationFailure.TOO_MUCH_MOVEMENT, runCalibration(fidgetGravities(30), CFG).failure());
+    }
+
+    /** With every sample within the spread the baseline is bit for bit the v1 mean. */
+    @Test
+    void calibrationWithoutOutliersIsIdenticalToV1() {
+        List<Vec3> gs = new ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            gs.add(gFor(2 * Math.sin(i * 0.3), 1.0));
+        }
+        CalibrationStep q09 = runCalibration(gs, CFG);
+        CalibrationStep q10 = runCalibration(gs, CFG.replacing(b -> b.calibrationSpreadQuantile(1.0)));
+        assertEquals(q10.meanGravity(), q09.meanGravity());
+    }
+
+    @Test
+    void quantileComparisonToleratesRounding() {
+        assertTrue(CalibrationService.hasEnoughInliers(225, 250, 0.9));
+        assertFalse(CalibrationService.hasEnoughInliers(224, 250, 0.9));
+        assertTrue(CalibrationService.hasEnoughInliers(250, 250, 1.0));
+        assertFalse(CalibrationService.hasEnoughInliers(249, 250, 1.0));
+        assertTrue(CalibrationService.hasEnoughInliers(0, 250, 0.0));
+        assertFalse(CalibrationService.hasEnoughInliers(249, 250, 1.5));  // clamped to 1
+    }
+
     // MARK: PostureDetector
 
     @Test

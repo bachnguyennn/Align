@@ -8,10 +8,15 @@ import java.util.function.Consumer;
 /**
  * Mirrors AlignCore {@code PostureConfiguration} defaults exactly. {@code maxProcessingRateHz} is
  * null when there is no cap.
+ *
+ * <p>D-017: {@code calibrationSpreadQuantile} (fraction of neutral-calibration samples that must
+ * lie within {@code calibrationMaxSpreadDegrees} of the mean; 1.0 = v1 rule) and the guided-nod
+ * axis calibration parameters {@code axisCalibration*}.
  */
 public record PostureConfiguration(
         double calibrationDuration,
         double calibrationMaxSpreadDegrees,
+        double calibrationSpreadQuantile,
         int minimumCalibrationSamples,
         double forwardThresholdDegrees,
         double backwardThresholdDegrees,
@@ -22,7 +27,11 @@ public record PostureConfiguration(
         double smoothingTimeConstant,
         Double maxProcessingRateHz,
         double maxSampleGap,
-        HeadAxisConvention axes) {
+        HeadAxisConvention axes,
+        double axisCalibrationDuration,
+        double axisCalibrationMinimumNodDegrees,
+        double axisCalibrationMaxYawDegrees,
+        double axisCalibrationMaxOffAxisRatio) {
 
     /** {@code PostureConfiguration.default}. */
     public static final PostureConfiguration DEFAULT = new Builder().build();
@@ -31,6 +40,7 @@ public record PostureConfiguration(
     private static final Map<String, Setter> CONFIG_KEYS = Map.ofEntries(
             Map.entry("calibrationDuration", (b, v) -> b.calibrationDuration(v.asDouble())),
             Map.entry("calibrationMaxSpreadDegrees", (b, v) -> b.calibrationMaxSpreadDegrees(v.asDouble())),
+            Map.entry("calibrationSpreadQuantile", (b, v) -> b.calibrationSpreadQuantile(v.asDouble())),
             Map.entry("minimumCalibrationSamples", (b, v) -> b.minimumCalibrationSamples(v.asInt())),
             Map.entry("forwardThresholdDegrees", (b, v) -> b.forwardThresholdDegrees(v.asDouble())),
             Map.entry("backwardThresholdDegrees", (b, v) -> b.backwardThresholdDegrees(v.asDouble())),
@@ -40,10 +50,19 @@ public record PostureConfiguration(
             Map.entry("reminderCooldown", (b, v) -> b.reminderCooldown(v.asDouble())),
             Map.entry("smoothingTimeConstant", (b, v) -> b.smoothingTimeConstant(v.asDouble())),
             Map.entry("maxProcessingRateHz", (b, v) -> b.maxProcessingRateHz(v.isNull() ? null : v.asDouble())),
-            Map.entry("maxSampleGap", (b, v) -> b.maxSampleGap(v.asDouble())));
+            Map.entry("maxSampleGap", (b, v) -> b.maxSampleGap(v.asDouble())),
+            Map.entry("axisCalibrationDuration", (b, v) -> b.axisCalibrationDuration(v.asDouble())),
+            Map.entry("axisCalibrationMinimumNodDegrees", (b, v) -> b.axisCalibrationMinimumNodDegrees(v.asDouble())),
+            Map.entry("axisCalibrationMaxYawDegrees", (b, v) -> b.axisCalibrationMaxYawDegrees(v.asDouble())),
+            Map.entry("axisCalibrationMaxOffAxisRatio", (b, v) -> b.axisCalibrationMaxOffAxisRatio(v.asDouble())));
 
     private interface Setter {
         void apply(Builder builder, JsonNode value);
+    }
+
+    /** True if {@code key} is a fixture configuration key (a scalar field or forwardAxis/lateralAxis). */
+    public static boolean isKey(String key) {
+        return CONFIG_KEYS.containsKey(key) || key.equals("forwardAxis") || key.equals("lateralAxis");
     }
 
     /** Builds a configuration from fixture-style camelCase overrides (null or empty = default). */
@@ -51,9 +70,17 @@ public record PostureConfiguration(
         if (overrides == null || overrides.isNull() || overrides.isEmpty()) {
             return DEFAULT;
         }
-        Builder builder = new Builder();
-        Vec3 forwardAxis = HeadAxisConvention.DEFAULT.forwardAxis();
-        Vec3 lateralAxis = HeadAxisConvention.DEFAULT.lateralAxis();
+        return DEFAULT.withOverrides(overrides);
+    }
+
+    /** A copy with fixture-style camelCase overrides applied (unknown keys are an error). */
+    public PostureConfiguration withOverrides(JsonNode overrides) {
+        if (overrides == null || overrides.isNull() || overrides.isEmpty()) {
+            return this;
+        }
+        Builder builder = new Builder(this);
+        Vec3 forwardAxis = axes.forwardAxis();
+        Vec3 lateralAxis = axes.lateralAxis();
         for (Map.Entry<String, JsonNode> entry : overrides.properties()) {
             String key = entry.getKey();
             JsonNode value = entry.getValue();
@@ -89,6 +116,7 @@ public record PostureConfiguration(
     public static final class Builder {
         private double calibrationDuration = 10.0;
         private double calibrationMaxSpreadDegrees = 5.0;
+        private double calibrationSpreadQuantile = 0.9;
         private int minimumCalibrationSamples = 100;
         private double forwardThresholdDegrees = 15.0;
         private double backwardThresholdDegrees = 20.0;
@@ -100,12 +128,17 @@ public record PostureConfiguration(
         private Double maxProcessingRateHz = null;
         private double maxSampleGap = 1.0;
         private HeadAxisConvention axes = HeadAxisConvention.DEFAULT;
+        private double axisCalibrationDuration = 8.0;
+        private double axisCalibrationMinimumNodDegrees = 12.0;
+        private double axisCalibrationMaxYawDegrees = 45.0;
+        private double axisCalibrationMaxOffAxisRatio = 0.35;
 
         private Builder() {}
 
         private Builder(PostureConfiguration c) {
             calibrationDuration = c.calibrationDuration;
             calibrationMaxSpreadDegrees = c.calibrationMaxSpreadDegrees;
+            calibrationSpreadQuantile = c.calibrationSpreadQuantile;
             minimumCalibrationSamples = c.minimumCalibrationSamples;
             forwardThresholdDegrees = c.forwardThresholdDegrees;
             backwardThresholdDegrees = c.backwardThresholdDegrees;
@@ -117,10 +150,15 @@ public record PostureConfiguration(
             maxProcessingRateHz = c.maxProcessingRateHz;
             maxSampleGap = c.maxSampleGap;
             axes = c.axes;
+            axisCalibrationDuration = c.axisCalibrationDuration;
+            axisCalibrationMinimumNodDegrees = c.axisCalibrationMinimumNodDegrees;
+            axisCalibrationMaxYawDegrees = c.axisCalibrationMaxYawDegrees;
+            axisCalibrationMaxOffAxisRatio = c.axisCalibrationMaxOffAxisRatio;
         }
 
         public Builder calibrationDuration(double v) { calibrationDuration = v; return this; }
         public Builder calibrationMaxSpreadDegrees(double v) { calibrationMaxSpreadDegrees = v; return this; }
+        public Builder calibrationSpreadQuantile(double v) { calibrationSpreadQuantile = v; return this; }
         public Builder minimumCalibrationSamples(int v) { minimumCalibrationSamples = v; return this; }
         public Builder forwardThresholdDegrees(double v) { forwardThresholdDegrees = v; return this; }
         public Builder backwardThresholdDegrees(double v) { backwardThresholdDegrees = v; return this; }
@@ -132,12 +170,18 @@ public record PostureConfiguration(
         public Builder maxProcessingRateHz(Double v) { maxProcessingRateHz = v; return this; }
         public Builder maxSampleGap(double v) { maxSampleGap = v; return this; }
         public Builder axes(HeadAxisConvention v) { axes = v; return this; }
+        public Builder axisCalibrationDuration(double v) { axisCalibrationDuration = v; return this; }
+        public Builder axisCalibrationMinimumNodDegrees(double v) { axisCalibrationMinimumNodDegrees = v; return this; }
+        public Builder axisCalibrationMaxYawDegrees(double v) { axisCalibrationMaxYawDegrees = v; return this; }
+        public Builder axisCalibrationMaxOffAxisRatio(double v) { axisCalibrationMaxOffAxisRatio = v; return this; }
 
         public PostureConfiguration build() {
             return new PostureConfiguration(calibrationDuration, calibrationMaxSpreadDegrees,
-                    minimumCalibrationSamples, forwardThresholdDegrees, backwardThresholdDegrees,
-                    lateralThresholdDegrees, hysteresisDegrees, sustainedDuration, reminderCooldown,
-                    smoothingTimeConstant, maxProcessingRateHz, maxSampleGap, axes);
+                    calibrationSpreadQuantile, minimumCalibrationSamples, forwardThresholdDegrees,
+                    backwardThresholdDegrees, lateralThresholdDegrees, hysteresisDegrees, sustainedDuration,
+                    reminderCooldown, smoothingTimeConstant, maxProcessingRateHz, maxSampleGap, axes,
+                    axisCalibrationDuration, axisCalibrationMinimumNodDegrees, axisCalibrationMaxYawDegrees,
+                    axisCalibrationMaxOffAxisRatio);
         }
     }
 }
