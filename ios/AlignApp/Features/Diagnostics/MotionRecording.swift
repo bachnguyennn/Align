@@ -62,7 +62,7 @@ enum MotionRecordingEncoder {
     /// replay tool rejects keys it does not know yet; replay then uses their defaults.
     static let configKeys: [String] = [
         "calibrationDuration", "calibrationMaxSpreadDegrees", "calibrationSpreadQuantile",
-        "minimumCalibrationSamples", "forwardThresholdDegrees", "backwardThresholdDegrees",
+        "calibrationMaxDriftDegrees", "calibrationDriftWindow", "minimumCalibrationSamples", "forwardThresholdDegrees", "backwardThresholdDegrees",
         "lateralThresholdDegrees", "hysteresisDegrees", "sustainedDuration", "reminderCooldown",
         "smoothingTimeConstant", "maxProcessingRateHz", "maxSampleGap", "forwardAxis", "lateralAxis",
         "axisCalibrationDuration", "axisCalibrationMinimumNodDegrees", "axisCalibrationMaxYawDegrees",
@@ -144,6 +144,8 @@ enum MotionRecordingEncoder {
             "calibrationDuration": number(c.calibrationDuration, decimals: 6),
             "calibrationMaxSpreadDegrees": number(c.calibrationMaxSpreadDegrees, decimals: 6),
             "calibrationSpreadQuantile": number(c.calibrationSpreadQuantile, decimals: 6),
+            "calibrationMaxDriftDegrees": number(c.calibrationMaxDriftDegrees, decimals: 6),
+            "calibrationDriftWindow": number(c.calibrationDriftWindow, decimals: 6),
             "minimumCalibrationSamples": String(c.minimumCalibrationSamples),
             "forwardThresholdDegrees": number(c.forwardThresholdDegrees, decimals: 6),
             "backwardThresholdDegrees": number(c.backwardThresholdDegrees, decimals: 6),

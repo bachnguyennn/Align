@@ -14,6 +14,7 @@ final class MotionRecordingEncoderTests: XCTestCase {
         "maxProcessingRateHz", "maxSampleGap", "forwardAxis", "lateralAxis",
         "calibrationSpreadQuantile", "axisCalibrationDuration", "axisCalibrationMinimumNodDegrees",
         "axisCalibrationMaxYawDegrees", "axisCalibrationMaxOffAxisRatio",
+        "calibrationMaxDriftDegrees", "calibrationDriftWindow",
     ]
 
     private func makeRecording(notes: String, baseline: NeutralBaseline?, sampleCount: Int = 3) -> MotionRecording {
