@@ -144,7 +144,7 @@ All synthetic data comes from the Java generator (`Generator.java`, SplittableRa
 | 0.5 | 0/20 | 1/20 (yaw err 0.5°, max 0.5°) | 20/20 (yaw err 1.0°, max 3.0°) | 20/20 (yaw err 0.7°, max 2.0°) |
 | 1.0 | 0/20 | 3/20 (yaw err 2.6°, max 5.7°) | 20/20 (yaw err 2.0°, max 5.9°) | 20/20 (yaw err 1.3°, max 4.0°) |
 | 2.0 | 0/12 | 3/12 (yaw err 15.1°, max 18.6°) | 12/12 (yaw err 4.6°, max 11.9°) | 12/12 (yaw err 3.1°, max 8.1°) |
-| 3.0 | 0/8 | 2/8 (yaw err 26.2°, max 28.4°) | 8/8 (yaw err 8.2°, max 18.5°) | 8/8 (yaw err 5.6°, max 12.5°) |
+| 3.0 | 0/9 | 2/9 (yaw err 26.2°, max 28.4°) | 8/9 (yaw err 8.2°, max 18.5°) | 9/9 (yaw err 5.5°, max 12.5°) |
 
 ## D-017 (ii-b): axis line fit methods (20° nods, earbud yaw 20°)
 
@@ -177,8 +177,8 @@ All synthetic data comes from the Java generator (`Generator.java`, SplittableRa
 | still, sway 2.0° | accepted | 14/20 (1.09°) | 14/20 (1.09°) | 14/20 (1.09°) | 14/20 (1.09°) |
 | still, sway 3.0° | accepted | 8/20 (1.78°) | 9/20 (1.71°) | 10/20 (1.68°) | 10/20 (1.68°) |
 | still, sway 4.0° | accepted | 3/20 (1.28°) | 3/20 (1.28°) | 4/20 (1.57°) | 5/20 (2.04°) |
-| one 1 s fidget to 10° | accepted | 0/20 | 17/20 (0.54°) | 18/20 (0.52°) | 18/20 (0.52°) |
-| one 1 s fidget to 20° | accepted | 0/20 | 0/20 | 18/20 (0.51°) | 18/20 (0.51°) |
+| one 1 s fidget to 10° | accepted | 0/20 | 19/20 (0.53°) | 20/20 (0.52°) | 20/20 (0.52°) |
+| one 1 s fidget to 20° | accepted | 0/20 | 0/20 | 19/20 (0.50°) | 19/20 (0.50°) |
 | moving: nodding ±9° / ±4° (fixture motion) | rejected | 20/20 | 20/20 | 20/20 | 20/20 |
 | moving: nodding ±6° at 0.3 Hz | rejected | 17/20 (0.53°) | 17/20 (0.53°) | 17/20 (0.53°) | 17/20 (0.53°) |
 | moving: looking around ±6° sideways | rejected | 20/20 | 20/20 | 20/20 | 20/20 |
@@ -196,11 +196,11 @@ All synthetic data comes from the Java generator (`Generator.java`, SplittableRa
 | still, sway 0.5° | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 |
 | still, sway 1.0° | 0/20 | 4/20 | 0/20 | 0/20 | 1/20 | 0/20 |
 | still, sway 1.5° | 0/20 | 8/20 | 4/20 | 1/20 | 4/20 | 3/20 |
-| still, sway 2.0° | 0/20 | 12/20 | 7/20 | 4/20 | 9/20 | 4/20 |
-| still, sway 3.0° | 5/20 | 16/20 | 11/20 | 9/20 | 14/20 | 11/20 |
+| still, sway 2.0° | 0/20 | 12/20 | 7/20 | 3/20 | 9/20 | 4/20 |
+| still, sway 3.0° | 5/20 | 16/20 | 10/20 | 9/20 | 14/20 | 11/20 |
 
 ## Throughput
 
-Java reference: 2551 samples in 1 ms (0.2 µs/sample, HotSpot JVM after the runs above, informational only).
+Java reference: 2551 samples in 1 ms (0.3 µs/sample, HotSpot JVM after the runs above, informational only).
 
-Total runtime: 20 s.
+Total runtime: 23 s.

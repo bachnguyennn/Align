@@ -165,8 +165,9 @@ Run `rereference` (above) whenever the reference algorithm changes, and commit t
 every v1 fixture keeps its outcome (`calibration_too_much_movement` still fails: its ±9° nodding
 leaves far fewer than 90 % of the samples within 5°), and a calibration whose samples are all
 within the spread produces bit for bit the v1 baseline. D-020 (calibration drift rule) changed no
-reference block either (`rereference --check`: 0 differ); no committed fixture drifts by more
-than 3° between the first and last 2 s of its calibration.
+reference block either (`rereference --check`: 0 differ, including after the revision that
+averages only the spread-rule inliers in each drift window); apart from `calibration_slow_slouch`,
+no committed fixture drifts by more than 3° between the first and last 2 s of its calibration.
 
 ## Recordings (D-017 (d))
 

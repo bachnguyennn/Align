@@ -31,8 +31,8 @@ mirrors it line for line:
    (D-017 (b)) `tooMuchMovement` unless at least `calibrationSpreadQuantile` = 90 % of the samples
    are within 5° of the mean; baseline = normalized mean of those inliers (identical to the v1
    mean when every sample is an inlier). D-020: also `tooMuchMovement` if the mean gravity of the
-   first 2 s and of the last 2 s (`calibrationDriftWindow`) are more than 3°
-   (`calibrationMaxDriftDegrees`) apart, which catches a slow slouch.
+   inliers in the first 2 s and in the last 2 s (`calibrationDriftWindow`) are more than 3°
+   (`calibrationMaxDriftDegrees`) apart, or a window has no inliers; this catches a slow slouch.
 3b. Optional guided nod (D-017 (a)): after calibration the user nods once; the forward axis line
    is the principal axis of the head rotation vectors (≥ 3°) in the baseline plane, its sign taken
    from the default axes; lateral = `g0 × forward`. Rejected if more than 45° from the default
@@ -263,6 +263,10 @@ smoothing and accepted by every rule, with a harmless 0.3° baseline error.
 
 ### D-020: neutral calibration drift rule
 
+Rule (contract, D-020): the normalized mean gravity of the spread-rule inliers (within 5° of the
+mean) in the first 2 s and in the last 2 s must be at most 3° apart; a window with no inliers
+fails. Using inliers only means a brief fidget at either end is not taken for drift.
+
 Java reference, 20 seeds per cell. A steady slouch is ramped over the whole 10 s calibration (ten
 short eased segments, so the samples spread evenly around the mean, which the spread rule
 accepts). Cells: calibrations rejected with `tooMuchMovement`; columns
@@ -278,20 +282,25 @@ accepts). Cells: calibrations rejected with `tooMuchMovement`; columns
 | still, sway 0.5° | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 |
 | still, sway 1.0° | 0/20 | 4/20 | 0/20 | 0/20 | 1/20 | 0/20 |
 | still, sway 1.5° | 0/20 | 8/20 | 4/20 | 1/20 | 4/20 | 3/20 |
-| still, sway 2.0° | 0/20 | 12/20 | 7/20 | 4/20 | 9/20 | 4/20 |
-| still, sway 3.0° | 5/20 | 16/20 | 11/20 | 9/20 | 14/20 | 11/20 |
+| still, sway 2.0° | 0/20 | 12/20 | 7/20 | 3/20 | 9/20 | 4/20 |
+| still, sway 3.0° | 5/20 | 16/20 | 10/20 | 9/20 | 14/20 | 11/20 |
 
 The spread rule alone accepts every steady slouch (19/20 even at 10°, which biases the baseline
 by about 5°). The default 3° / 2 s rejects every slouch of 5° or more and none of the still
 users at the modelled 0.5° sway or at 1°; a 3° slouch (≈ 1.5° baseline bias) mostly passes,
 which is acceptable. The cost is false rejection of very unsteady users: 4/20 at 1.5° sway, 7/20
-at 2°, and 11/20 at 3°, where the spread rule already rejects 5/20. Those users are asked to
+at 2°, and 10/20 at 3°, where the spread rule already rejects 5/20. Those users are asked to
 recalibrate. 3° / 3 s halves the rejections at 2° sway (4/20) but misses 4/20 of the 5°
 slouches; 4° / 2 s misses half of them; 2° / 2 s rejects too many still users. **The defaults
 3° / 2 s are confirmed**; if real recordings show still users with 1.5–2° of sway, switch to
-3° / 3 s. One more side effect: a single 1 s fidget that falls inside the first or last 2 s now
-fails the calibration (the fidget rows of the current D-017 (iv) report: 18/20 accepted, was
-20/20).
+3° / 3 s.
+
+Fidgets at either end: a 1 s fidget to 10° is accepted 20/20 wherever it falls (with the first
+version of the rule, which averaged all samples in a window, a fidget inside the first or last
+2 s failed: 18/20). A 1 s fidget to 20° is accepted 19/20; the one rejected run has the fidget
+at 8–9 s, where the 0.5 s smoothing leaves a decay tail whose samples below 5° are inliers and
+shift the last window by just over 3° (it passes with a 4° limit). That residual posture is real,
+so the rejection is defensible.
 
 ### Throughput
 
