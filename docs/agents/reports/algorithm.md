@@ -203,3 +203,130 @@ Surefire 3.6.1. The only runtime dependency is `jackson-databind`. The pipeline 
   `shared/fixtures/README.md`, the README test table and `docs/agents/test-plan.md`.
 - If the fixtures are regenerated with Java later, Swift's `FixtureReplayTests` need no change:
   they read neither `generator` nor `producedBy`.
+
+# D-017 (a, b): guided-nod axis calibration and calibration spread quantile
+
+Branch `worktree-agent-a32daae5820c5bf01`, based on `main` at `0af3f4d` (the Lead's AlignCore
+commit). AlignCore was not changed; the five new configuration defaults were kept (evidence
+below).
+
+## Deliverables
+
+- **Java reference** (`analytics/align-tools`): `AxisCalibrationFailure`, `AxisCalibrationOutcome`,
+  `NeutralBaseline.learnedAxes`, `PostureUpdate.axisCalibrationOutcome` and the five
+  `PostureConfiguration` fields mirrored; `AxisCalibrationService`; `PostureMonitor.effectiveAxes()`,
+  `beginAxisCalibration()`, `cancelAxisCalibration()`, `clearLearnedAxes()`; tilt uses the effective
+  axes; quantile spread rule in `CalibrationService`.
+- **Swift** (`ios/AlignKit/Sources/PostureDetection`): `AxisCalibrationService.swift` (new),
+  `PostureMonitor.swift` (API exactly as in sensor-contracts.md), `CalibrationService.swift`,
+  `PostureDetectionConstants.swift`, `TiltEstimator.swift` (doc only).
+- **Generator**: `mountYaw` (rotation about the head's up axis, default 0 = bit for bit the v1
+  model) and five Java-generated fixtures: `nod_axis_calibration_yawed_earbud`,
+  `nod_axis_calibration_up`, `nod_axis_calibration_sideways_rejected`, `nod_axis_calibration_no_nod`,
+  `calibration_brief_fidget`. New `expected` fields `axisCalibrationOutcomes`, `learnedAxes`
+  (`present`, `yawDegrees`, `toleranceDegrees`) and `maxAbsLateral`; `reference` gains
+  `axisCalibrationOutcomes` and `learnedAxes` only when an axis calibration finished. New actions
+  `beginAxisCalibration`, `cancelAxisCalibration`, `clearLearnedAxes`. Without `--only` the
+  generator no longer overwrites the eight Python-generated fixtures.
+- **Tools**: `exec:java@replay` (timeline summary of recordings or fixtures, `--set key=value`
+  overrides) and `exec:java@rereference` (recompute reference blocks, keep samples; `--check`).
+- **Tests**: JUnit `AxisCalibrationTest` (19), quantile tests in `ComponentsTest`, new fixture,
+  generator and evaluation tests, `ReplayToolsTest`; Swift `AxisCalibrationTests` (the same 19
+  cases), quantile tests in `ComponentTests`, `FixtureReplayTests` for the new fixtures, actions
+  and expected/reference fields.
+- **Docs**: `shared/fixtures/README.md` (new fixtures, mount yaw, fields, recording format,
+  tools), `shared/fixtures/recordings/README.md` (no data, only where real recordings go),
+  `docs/research/algorithm-evaluation.md` (D-017 section, recommendations, limitations),
+  `analytics/align-tools/results/evaluation.md` (regenerated, 20 seeds).
+
+## Tests actually run
+
+- `./mvnw -B -ntp verify` (JDK 21.0.13, Windows 11): **284 JUnit tests, 0 failures** (177 before).
+- **Swift was not compiled**: there is no Swift toolchain on this machine. The Swift code mirrors
+  the Java line by line and uses only APIs that exist in AlignCore, Foundation and XCTest, but
+  its first compile happens in CI.
+
+## Algorithm (refinements within the contract)
+
+- Head rotation per smoothed sample: `head = −rotationVector(g0, g)`, as in the tilt estimate.
+  Samples with |head| ≥ 3° are fitted (`axisCalibrationMotionFloorDegrees`).
+- **Forward line = principal axis** of the fitted vectors in the baseline plane, with basis
+  `e1` = configured forward axis projected onto the plane and `e2` = normalized(`g0 × e1`); angle
+  `0.5·atan2(2·Sab, Saa − Sbb)` ∈ (−90°, 90°], so `forward · e1 ≥ 0` (sign from the default; a nod
+  down or up both work). Lateral = normalized(`g0 × forward`); for the defaults with
+  `g0 = (0, 0, −1)` this gives exactly forward (−1, 0, 0), lateral (0, 1, 0) (asserted in both
+  suites). Chosen over the sign-aligned sum by evaluation (mean yaw error 1.00° vs 1.11° at 0.5°
+  sway, 3.96° vs 4.74° at 2°). A centred principal axis was also tried (0.86° at 0.5° sway) but
+  accepted fewer nods at high sway (14/20 vs 19/20), so it stays evaluation-only in Java.
+- Off-axis ratio = Σ|v·lateral| ÷ Σ|v·forward| over the fitted samples; yaw = fitted angle.
+- Finish: first update with |head| ≤ 5° after a peak ≥ `axisCalibrationMinimumNodDegrees`, else at
+  `axisCalibrationDuration`. The floor and return levels are capped at half the minimum nod, so a
+  configured minimum below 6° still works.
+- Neutral calibration: the inliers are the samples within `calibrationMaxSpreadDegrees` of the
+  plain mean; it fails unless inliers ≥ quantile × count (1e-9 tolerance, so 225/250 = 0.9
+  passes). **Baseline = inlier mean**, so an accepted fidget does not bias the baseline (0.5°
+  error, the same as without a fidget). With every sample an inlier this is bit for bit the v1
+  mean.
+
+## Contract interpretations (identical in Java and Swift)
+
+1. `beginAxisCalibration()` without a baseline still cancels a neutral calibration in progress
+   (the contract says it cancels one) and closes an open episode; `.needsBaseline` is delivered on
+   the next update of any kind (`process`, passive or not, or `interrupt`).
+2. `beginCalibration()` cancels an axis calibration in progress without an outcome (symmetric, so
+   two calibrations never run at once). `cancelAxisCalibration()` gives no outcome.
+3. `clearLearnedAxes()` keeps the baseline `version` (it is not a calibration).
+4. If the head never comes back near neutral, the attempt ends at `axisCalibrationDuration` and,
+   with a valid peak, is still fitted (a nod held down is a valid line); only the absence of a
+   valid peak gives `.noNodDetected`.
+5. The update carrying a successful axis outcome already reports its tilt with the new axes, as
+   the neutral calibration's outcome update uses the new baseline.
+6. Yaw and sign are always measured against `configuration.axes`, never against earlier learned
+   axes, so repeated nods do not accumulate.
+7. Lateral comes from geometry (`g0 × forward`), not from the configured lateral axis. For any
+   right-handed device frame this is the physical right-ear-down axis.
+8. Java's checks are written `!(x <= limit)` so that a NaN is rejected exactly like Swift's `guard`.
+
+## Evaluation headline numbers (synthetic data only)
+
+- **Crosstalk vs earbud yaw** (20° forward hold): default axes read 3.4° / 6.8° / 9.9° / 12.8° of
+  lateral at 10° / 20° / 30° / 40° of yaw, and a 16° hold is reminded only 2/10 (30°) and 0/10
+  (40°). With learned axes: 0.40° at every yaw (the synthetic sway) and 10/10. Noise-free, the
+  learned axes read 20.000° / 0.000° even with the 8°/−3° pitch/roll offset.
+- **Nod success** (earbud yaw 20°): 20° and 30° nods 20/20 up to 2° sway, 15/16 and 16/16 at 3°;
+  learned yaw within 1.0° / 0.7° on average at 0.5° sway (4.0° / 2.7° at 2° sway). 8° and 12°
+  nods are mostly rejected (smoothing attenuates the peak below 12°).
+- **False acceptance**: ear-to-shoulder, 60° diagonal and circular head roll 0/20 accepted
+  (`inconsistentMotion`); head turns 0/20 (`noNodDetected`); a 30° diagonal is accepted and
+  learned as 30° of yaw (indistinguishable from a yawed earbud).
+- **Quantile**: 0.9 kept. It accepts a single 1 s fidget to 10° or 20° 20/20 (v1: 0/20) and 2°
+  sway 20/20, and still rejects the fixture's nodding 20/20 and two fidgets 20/20; 0.8 starts
+  accepting users who look around (rejects only 7/20).
+- Defaults kept: minimum nod 12° (lower would accept small nods with 9–13° yaw errors), max yaw
+  45° (supports earbud yaw up to 40°, rejects 60° diagonals), off-axis ratio 0.35, duration 8 s,
+  quantile 0.9.
+
+## Existing fixtures
+
+No sample and **no reference block changed**: `rereference --check` reports 0 stale blocks. All
+v1 outcomes are unchanged under the quantile rule; `calibration_too_much_movement` still fails
+(its ±9° nodding leaves far fewer than 90 % of the samples within 5°), and every v1 calibration
+had all samples within the spread, so its baseline is bit for bit the v1 one. The JUnit fixture
+size limit was raised from 1.25 to 2 MiB (the total is now about 1.4 MiB).
+
+## Open issues and proposals
+
+1. **Slow drift during the neutral calibration is not detected.** Slouching 10° over the 10 s is
+   accepted 11/20 times with quantile 0.9 (4/20 with v1), biasing the baseline by ≈ 4.4°.
+   Proposal for decisions.md: also fail `.tooMuchMovement` when the means of the first and last
+   2 s differ by more than about 3°. Not implemented (it changes the contract).
+2. **The UI must ask for a deliberate 20–30° nod**; 12° nods rarely pass after smoothing, and with
+   large sway one nod gives 4–6° yaw errors (up to 12–18°). Averaging two nods would roughly halve
+   that if real data shows high sway.
+3. If S-05 finds the default forward and lateral axes **swapped**, every correct nod is rejected as
+   more than 45° off, so the default convention must still be confirmed.
+4. **Earbud hand-off**: learned axes, like the baseline, belong to one earbud's fit.
+5. Swift compiles only in CI (see above).
+6. Recorded sessions can be replayed (`exec:java@replay`), but recordings turned into fixtures
+   are not wired into the tests yet (the suites expect `motion/` to contain generator scenarios
+   only); suggested: a separate `recorded/` folder.
