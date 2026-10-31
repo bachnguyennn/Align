@@ -1,0 +1,38 @@
+# Local run: the server plus PostgreSQL 16. From server/:  docker compose up --build
+# Development only: the password below is a placeholder; the database port is bound to localhost.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: align
+      POSTGRES_USER: align
+      POSTGRES_PASSWORD: align-dev-only
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - align-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U align -d align"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/align
+      DATABASE_USERNAME: align
+      DATABASE_PASSWORD: align-dev-only
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  align-db:
