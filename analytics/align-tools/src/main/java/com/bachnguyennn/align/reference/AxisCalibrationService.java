@@ -168,8 +168,9 @@ public final class AxisCalibrationService {
             return AxisCalibrationStep.failed(AxisCalibrationFailure.NO_NOD_DETECTED);
         }
         Fit fit = fit(used, g0, config.axes(), lineFit);
+        // Written as !(x <= limit) so that NaN is rejected, exactly like Swift's guard.
         if (fit.axes() == null
-                || Math.abs(fit.yawDegrees()) > config.axisCalibrationMaxYawDegrees()
+                || !(Math.abs(fit.yawDegrees()) <= config.axisCalibrationMaxYawDegrees())
                 || !(fit.offAxisRatio() <= config.axisCalibrationMaxOffAxisRatio())) {
             return AxisCalibrationStep.failed(AxisCalibrationFailure.INCONSISTENT_MOTION);
         }
