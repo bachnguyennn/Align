@@ -1,0 +1,371 @@
+# Align CI. Owner: QA agent (task Q-01).
+#
+# Diagnostics policy: the Lead reads CI through the public, unauthenticated GitHub API, which
+# exposes run/job/step status and check-run annotations but NOT raw logs. So every failure must
+# surface as an annotation:
+#   - xcodebuild / swift output goes through `xcbeautify --renderer github-actions` (macOS);
+#   - Linux and shellcheck output goes through scripts/ci/annotate-diagnostics.sh;
+#   - pytest uses pytest-github-actions-annotate-failures;
+#   - every job ends with an `if: failure()` step that posts the error lines + tail of the last
+#     raw log as one annotation (scripts/ci/annotate-log-tail.sh) and uploads logs/.xcresult.
+# Read results with: scripts/ci-status.sh [branch]
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # bash --noprofile --norc -eo pipefail
+    shell: bash
+
+# Runner images are pinned (not *-latest): ubuntu-latest started moving to Ubuntu 26 on
+# 2026-10-19 (runner-images#14748), which could break setup-python 3.12 availability.
+
+env:
+  # Verified present on the macos-15 image (runner-images README, image 20261028): Xcode 16.4
+  # is the image default (iOS 18.5 SDK). Falls back to the default with a warning if missing.
+  XCODE_APP: /Applications/Xcode_16.4.app
+  APP_SCHEME: Align
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_ANALYTICS: "1"
+
+jobs:
+  hygiene:
+    name: Repo hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: No CRLF line endings in the index
+        run: |
+          bad="$(git ls-files --eol | awk -F '\t' '$1 ~ /^i\/(crlf|mixed)/ { print $2 }')"
+          if [[ -n "$bad" ]]; then
+            while IFS= read -r f; do
+              echo "::error file=$f::File is committed with CRLF line endings; .gitattributes requires LF. Run: git add --renormalize ."
+            done <<< "$bad"
+            exit 1
+          fi
+          echo "All text files are LF."
+
+      - name: Generated Xcode project is not committed (D-003)
+        run: |
+          tracked="$(git ls-files 'ios/*.xcodeproj/*' 'ios/*.xcworkspace/*')"
+          if [[ -n "$tracked" ]]; then
+            echo "::error::Generated Xcode project files are tracked (D-003 says generate with XcodeGen): $(echo "$tracked" | head -n 5 | tr '\n' ' ')"
+            exit 1
+          fi
+
+      - name: Shellcheck scripts
+        run: |
+          mapfile -t scripts < <(git ls-files '*.sh')
+          if [[ ${#scripts[@]} -eq 0 ]]; then echo "No shell scripts."; exit 0; fi
+          if ! command -v shellcheck >/dev/null; then
+            echo "::warning title=shellcheck missing::shellcheck is not installed on this image; skipping."
+            exit 0
+          fi
+          shellcheck --version | head -n 2
+          shellcheck -f gcc --severity=warning "${scripts[@]}" | bash scripts/ci/annotate-diagnostics.sh
+
+  python:
+    name: Python (analytics)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Detect analytics tests
+        id: detect
+        run: |
+          if [[ -d analytics/experiments ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Python tests skipped::analytics/experiments does not exist yet (Algorithm agent, A-01)."
+          fi
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: steps.detect.outputs.present == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          mkdir -p ci-logs
+          {
+            python -m pip install --upgrade pip
+            if [[ -f analytics/requirements.txt ]]; then
+              python -m pip install -r analytics/requirements.txt
+            else
+              echo "::notice title=No requirements file::analytics/requirements.txt not found; installing pytest only."
+            fi
+            # Keeps any pytest version pinned in requirements.txt; adds failure annotations.
+            python -m pip install pytest "pytest-github-actions-annotate-failures>=0.2,<1"
+          } 2>&1 | tee ci-logs/pip-install.log
+
+      - name: pytest analytics/experiments
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          status=0
+          python -m pytest analytics/experiments -ra 2>&1 | tee ci-logs/pytest.log || status=$?
+          if [[ $status -eq 5 ]]; then
+            echo "::warning title=No Python tests collected::pytest found no tests under analytics/experiments."
+            exit 0
+          fi
+          exit $status
+
+      - name: Annotate failure
+        if: failure()
+        run: |
+          log="$(ls -t ci-logs/*.log 2>/dev/null | head -n 1 || true)"
+          bash scripts/ci/annotate-log-tail.sh "${log:-ci-logs/none.log}" "python: $(basename "${log:-no log}")"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: python-logs
+          path: ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  swift-package:
+    name: Swift package (macOS + iOS Simulator build)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode
+        run: |
+          if [[ -d "$XCODE_APP" ]]; then
+            sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          else
+            echo "::warning title=Xcode not found::$XCODE_APP is not on this image; using default $(xcode-select -p)."
+          fi
+          xcodebuild -version
+          swift --version
+          mkdir -p ci-logs
+
+      - name: Ensure xcbeautify
+        run: |
+          command -v xcbeautify >/dev/null || brew install xcbeautify
+          xcbeautify --version
+
+      - name: swift build (incl. tests)
+        working-directory: ios/AlignKit
+        run: |
+          swift build --build-tests 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/swift-build.log" \
+            | xcbeautify --renderer github-actions
+
+      - name: swift test
+        working-directory: ios/AlignKit
+        run: |
+          swift test 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/swift-test.log" \
+            | xcbeautify --renderer github-actions
+
+      - name: Build package for iOS Simulator (compiles #if os(iOS) code)
+        working-directory: ios/AlignKit
+        run: |
+          xcodebuild -list -json > "$GITHUB_WORKSPACE/ci-logs/package-schemes.json"
+          # Multi-product packages get an aggregate "<Package>-Package" scheme; if it is
+          # missing, build each library scheme instead.
+          schemes="$(python3 -c '
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          schemes = (d.get("workspace") or d.get("project") or {}).get("schemes", [])
+          print("Available schemes: %s" % schemes, file=sys.stderr)
+          libs = ["AlignCore", "PostureDetection", "Sensors"]
+          chosen = ["AlignKit-Package"] if "AlignKit-Package" in schemes else [s for s in libs if s in schemes]
+          print("\n".join(chosen))
+          ' "$GITHUB_WORKSPACE/ci-logs/package-schemes.json")"
+          if [[ -z "$schemes" ]]; then
+            echo "::error title=No package scheme::xcodebuild -list found neither AlignKit-Package nor the library schemes in ios/AlignKit."
+            exit 1
+          fi
+          while IFS= read -r scheme; do
+            echo "Building scheme $scheme for iOS Simulator"
+            xcodebuild build \
+                -scheme "$scheme" \
+                -destination 'generic/platform=iOS Simulator' \
+                -derivedDataPath "$RUNNER_TEMP/dd-package" \
+                CODE_SIGNING_ALLOWED=NO 2>&1 \
+              | tee "$GITHUB_WORKSPACE/ci-logs/package-ios-build-$scheme.log" \
+              | xcbeautify --renderer github-actions
+          done <<< "$schemes"
+
+      - name: Annotate failure
+        if: failure()
+        run: |
+          log="$(ls -t ci-logs/*.log 2>/dev/null | head -n 1 || true)"
+          bash scripts/ci/annotate-log-tail.sh "${log:-ci-logs/none.log}" "swift-package: $(basename "${log:-no log}")"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: swift-package-logs
+          path: ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  swift-linux:
+    name: Swift package (Linux, non-blocking)
+    runs-on: ubuntu-24.04
+    container: swift:5.10-jammy
+    # Non-blocking for now: Linux is not a shipping platform, it only proves that AlignCore and
+    # PostureDetection stay platform-independent. Make it blocking once it has been green.
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Toolchain
+        run: |
+          swift --version
+          mkdir -p ci-logs
+
+      - name: swift build (incl. tests)
+        working-directory: ios/AlignKit
+        run: |
+          swift build --build-tests 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/linux-swift-build.log" \
+            | bash "$GITHUB_WORKSPACE/scripts/ci/annotate-diagnostics.sh"
+
+      - name: swift test
+        working-directory: ios/AlignKit
+        run: |
+          swift test 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/linux-swift-test.log" \
+            | bash "$GITHUB_WORKSPACE/scripts/ci/annotate-diagnostics.sh"
+
+      - name: Annotate failure
+        if: failure()
+        run: |
+          log="$(ls -t ci-logs/*.log 2>/dev/null | head -n 1 || true)"
+          bash scripts/ci/annotate-log-tail.sh "${log:-ci-logs/none.log}" "swift-linux: $(basename "${log:-no log}")"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: swift-linux-logs
+          path: ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  ios-app:
+    name: iOS app (XcodeGen, build + unit tests)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Detect app project
+        id: detect
+        run: |
+          mkdir -p ci-logs
+          if [[ -f ios/project.yml ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=iOS app skipped::ios/project.yml does not exist yet (Frontend agent, F-01)."
+          fi
+
+      - name: Select Xcode and tools
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          if [[ -d "$XCODE_APP" ]]; then
+            sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          else
+            echo "::warning title=Xcode not found::$XCODE_APP is not on this image; using default $(xcode-select -p)."
+          fi
+          xcodebuild -version
+          command -v xcbeautify >/dev/null || brew install xcbeautify
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcbeautify --version
+          xcodegen --version
+
+      - name: xcodegen generate
+        if: steps.detect.outputs.present == 'true'
+        working-directory: ios
+        run: |
+          xcodegen generate --spec project.yml 2>&1 | tee "$GITHUB_WORKSPACE/ci-logs/xcodegen.log"
+          if [[ ! -d Align.xcodeproj ]]; then
+            echo "::error file=ios/project.yml,title=Project name::xcodegen did not create ios/Align.xcodeproj (found: $(ls -d ./*.xcodeproj 2>/dev/null | tr '\n' ' ')). Set 'name: Align' in project.yml."
+            exit 1
+          fi
+          xcodebuild -list -project Align.xcodeproj -json > "$GITHUB_WORKSPACE/ci-logs/xcodebuild-list.json"
+          if ! python3 -c '
+          import json, os, sys
+          d = json.load(open(sys.argv[1]))
+          schemes = d.get("project", {}).get("schemes", [])
+          print("Schemes:", schemes)
+          sys.exit(0 if os.environ["APP_SCHEME"] in schemes else 1)
+          ' "$GITHUB_WORKSPACE/ci-logs/xcodebuild-list.json"; then
+            echo "::error file=ios/project.yml,title=Scheme missing::Generated Align.xcodeproj has no shared scheme '$APP_SCHEME'. Define it in project.yml (schemes: or targets.<name>.scheme) including the test targets."
+            exit 1
+          fi
+
+      - name: Pick iPhone simulator
+        if: steps.detect.outputs.present == 'true'
+        id: sim
+        working-directory: ios
+        run: |
+          dest="$(python3 "$GITHUB_WORKSPACE/scripts/ci/pick-simulator.py" --project Align.xcodeproj --scheme "$APP_SCHEME")"
+          echo "Destination: $dest"
+          echo "destination=$dest" >> "$GITHUB_OUTPUT"
+
+      - name: Build app
+        if: steps.detect.outputs.present == 'true'
+        working-directory: ios
+        run: |
+          xcodebuild build \
+              -project Align.xcodeproj \
+              -scheme "$APP_SCHEME" \
+              -destination "${{ steps.sim.outputs.destination }}" \
+              -derivedDataPath "$RUNNER_TEMP/dd-app" \
+              CODE_SIGNING_ALLOWED=NO 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/app-build.log" \
+            | xcbeautify --renderer github-actions
+
+      - name: Test app
+        if: steps.detect.outputs.present == 'true'
+        working-directory: ios
+        run: |
+          xcodebuild test \
+              -project Align.xcodeproj \
+              -scheme "$APP_SCHEME" \
+              -destination "${{ steps.sim.outputs.destination }}" \
+              -derivedDataPath "$RUNNER_TEMP/dd-app" \
+              -resultBundlePath "$GITHUB_WORKSPACE/ci-logs/AlignTests.xcresult" \
+              CODE_SIGNING_ALLOWED=NO 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/app-test.log" \
+            | xcbeautify --renderer github-actions
+
+      - name: Annotate failure
+        if: failure()
+        run: |
+          log="$(ls -t ci-logs/*.log 2>/dev/null | head -n 1 || true)"
+          bash scripts/ci/annotate-log-tail.sh "${log:-ci-logs/none.log}" "ios-app: $(basename "${log:-no log}")"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: ios-app-logs
+          path: ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
