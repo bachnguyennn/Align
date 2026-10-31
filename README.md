@@ -6,7 +6,7 @@ medical device: it measures head *tilt* (rotation), not forward head *translatio
 [`docs/research/algorithm-evaluation.md`](docs/research/algorithm-evaluation.md).
 
 **Status:** Phase 1 MVP code complete and green in CI (simulator build + unit tests). Not yet
-run on a physical iPhone with AirPods. See [`docs/agents/task-board.md`](docs/agents/task-board.md)
+run on a physical iPhone with AirPods. **To try it on your iPhone, follow [`TESTING.md`](TESTING.md).** See [`docs/agents/task-board.md`](docs/agents/task-board.md)
 and [`docs/agents/blockers.md`](docs/agents/blockers.md).
 
 ## Layout
@@ -49,7 +49,7 @@ simulated head tilt.
 | Swift package (core, sensors, posture detection, fixture replay) | `cd ios/AlignKit && swift test` | Mac or Linux |
 | App unit tests | `cd ios && xcodegen generate && xcodebuild test -project Align.xcodeproj -scheme Align -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO` | Mac |
 | Reference algorithm | `cd analytics && python -m venv .venv && .venv/bin/pip install -r requirements.txt && cd experiments && ../.venv/bin/python -m pytest tests` | any |
-| Hardware checks | follow [`docs/agents/test-plan.md`](docs/agents/test-plan.md) | iPhone + AirPods |
+| Hardware checks | quick: [`TESTING.md`](TESTING.md); full: [`docs/agents/test-plan.md`](docs/agents/test-plan.md) | iPhone + AirPods |
 
 CI runs all automated checks on every push. To read results without logging in to GitHub:
 `bash scripts/ci-status.sh [branch]`.
