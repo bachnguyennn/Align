@@ -32,6 +32,14 @@ struct SettingsView: View {
                             Label("Neutral position", systemImage: "scope")
                         }
                     }
+                    if controller.baseline != nil {
+                        // Redo nod / Use default axes live on the Neutral position screen.
+                        LabeledContent {
+                            Text(HeadAxisConvention.sourceTitle(learned: controller.hasLearnedAxes))
+                        } label: {
+                            Label("Tilt axes", systemImage: "arrow.up.and.down")
+                        }
+                    }
                     NavigationLink {
                         PermissionsView()
                     } label: {
@@ -58,7 +66,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Developer")
                 } footer: {
-                    Text("Live sensor values for checking your AirPods and the tilt axes.")
+                    Text("Live sensor values for checking your AirPods and the tilt axes, and an optional motion recording you can share for tuning.")
                 }
 
                 Section {
@@ -84,9 +92,7 @@ struct SettingsView: View {
     }
 
     private var appVersion: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
-        return "\(version) (\(build))"
+        AppInfo.versionString
     }
 }
 
