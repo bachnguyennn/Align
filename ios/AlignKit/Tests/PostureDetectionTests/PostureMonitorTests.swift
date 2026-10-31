@@ -3,7 +3,7 @@ import XCTest
 import AlignCore
 @testable import PostureDetection
 
-/// Mirrors analytics/experiments/tests/test_monitor.py.
+/// Mirrors `MonitorTest` in `analytics/align-tools`.
 final class PostureMonitorTests: XCTestCase {
     private let dt = 1.0 / 25.0
     /// A 0 → 25° step through the τ = 0.5 s filter crosses 15° after τ·ln(25/10).

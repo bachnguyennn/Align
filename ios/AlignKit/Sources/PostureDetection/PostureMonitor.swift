@@ -2,7 +2,7 @@ import Foundation
 import AlignCore
 
 /// The posture pipeline (docs/agents/sensor-contracts.md §2). Mirrors
-/// `analytics/experiments/align_reference/monitor.py`, which is the executable specification.
+/// `PostureMonitor` in `analytics/align-tools` (Java), which is the executable specification.
 ///
 /// Per sample:
 /// 1. Validate: gravity (or, if missing, gravity derived from the attitude) must be non-zero and

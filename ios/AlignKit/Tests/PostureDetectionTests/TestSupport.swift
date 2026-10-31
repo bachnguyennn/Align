@@ -2,7 +2,7 @@ import Foundation
 import AlignCore
 @testable import PostureDetection
 
-/// Noise-free head poses, same model as `align_reference/pose.py`:
+/// Noise-free head poses, same model as `Pose` in `analytics/align-tools`:
 /// attitude = Yaw(heading about world Z) * Tilt(rotation vector forward*forwardAxis +
 /// lateral*lateralAxis) * Mount(pitch about forwardAxis, roll about lateralAxis).
 /// Axes always come from a `HeadAxisConvention` (default: AlignCore's `airPodsDefault`).
@@ -79,7 +79,7 @@ func feed(
 }
 
 extension PostureState {
-    /// Case name, matching the fixture JSON and the Python reference.
+    /// Case name, matching the fixture JSON and the Java reference.
     var kindName: String {
         switch self {
         case .unavailable:

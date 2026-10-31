@@ -60,7 +60,7 @@ final class CodableRoundTripTests: XCTestCase {
     }
 
     func testMotionSampleDecodesHandWrittenJSON() throws {
-        // Shape a fixture or Python tool would write. Optional vectors may be absent.
+        // Shape a fixture or reference tool would write. Optional vectors may be absent.
         let json = """
         {
           "timestamp": 100.5,

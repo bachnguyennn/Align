@@ -118,7 +118,7 @@ struct FixtureReference: Decodable {
     let stateTransitions: Int
 }
 
-// MARK: - Replay (mirrors align_reference/fixtures.py `replay`)
+// MARK: - Replay (mirrors `Fixtures.replay` in `analytics/align-tools`)
 
 struct ReplayResult {
     var reminders: [ReminderDecision] = []
@@ -177,7 +177,7 @@ enum FixtureReplay {
             )
         }
         let monitor = PostureMonitor(configuration: configuration, baseline: baseline)
-        // Stable sort by t, like Python's sorted().
+        // Stable sort by t, like the reference replay.
         let actions = (fixture.actions ?? []).enumerated()
             .sorted { lhs, rhs in lhs.element.t != rhs.element.t ? lhs.element.t < rhs.element.t : lhs.offset < rhs.offset }
             .map { $0.element }
@@ -301,7 +301,7 @@ final class FixtureReplayTests: XCTestCase {
         }
     }
 
-    /// Cross-language parity with the Python reference output stored in the fixture.
+    /// Cross-language parity with the reference output stored in the fixture.
     private func assertReference(_ fixture: MotionFixture, _ result: ReplayResult, file: StaticString, line: UInt) {
         let ref = fixture.reference
         let n = fixture.name

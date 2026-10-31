@@ -6,7 +6,7 @@ import AlignCore
 /// became sustained during the cooldown reminds once the cooldown ends (D-016).
 /// A reminder is given if none was given yet, or at least `cooldown` seconds have passed since
 /// the last one. A timestamp earlier than the last reminder (clock base changed) also allows one.
-/// Mirrors `align_reference/reminder.py`.
+/// Mirrors `ReminderDecisionEngine` in `analytics/align-tools`.
 public struct ReminderDecisionEngine: Sendable {
     public private(set) var lastReminderTimestamp: TimeInterval?
 

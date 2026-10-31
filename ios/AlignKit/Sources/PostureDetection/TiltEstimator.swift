@@ -2,7 +2,7 @@ import Foundation
 import AlignCore
 
 /// Tilt estimation from head-frame gravity relative to a baseline gravity (D-005).
-/// Mirrors `analytics/experiments/align_reference/tilt.py`.
+/// Mirrors `Tilt` in `analytics/align-tools`.
 ///
 /// Derivation: let `R0` be the head-to-world attitude at neutral and `R1 = R0 * D` the current
 /// one, where `D` is the head's rotation expressed in the head frame. With world gravity

@@ -5,7 +5,7 @@ import AlignCore
 /// receives after `begin()`. Baseline = normalized mean. Fails with `.insufficientSamples` if fewer
 /// than `minimumCalibrationSamples` were collected, otherwise with `.tooMuchMovement` if any sample
 /// is more than `calibrationMaxSpreadDegrees` from the mean.
-/// Mirrors `align_reference/calibration.py`.
+/// Mirrors `CalibrationService` in `analytics/align-tools`.
 public struct CalibrationService: Sendable {
     public enum Step: Equatable, Sendable {
         case inProgress(progress: Double)

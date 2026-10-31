@@ -10,7 +10,7 @@ package com.bachnguyennn.align.reference;
 public final class Model {
 
     /**
-     * Tolerance used when comparing elapsed times with durations, so that e.g. 45.04 - 15.04
+     * Tolerance used when comparing elapsed times with durations, so that e.g. 32.05 - 2.05
      * (= 29.999999999999996 in IEEE doubles) counts as 30 s. Identical constant in Swift.
      */
     public static final double TIME_EPSILON = 1e-9;

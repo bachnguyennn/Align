@@ -171,8 +171,9 @@ final class PostureDetectorTests: XCTestCase {
 
     func testFloatingPointDurationEdgeCountsAsElapsed() {
         var d = PostureDetector()
-        _ = d.update(tilt(15.04, forward: 20), configuration: config)
-        let out = d.update(tilt(45.04, forward: 20), configuration: config)  // 29.999999999999996 s
+        XCTAssertLessThan(32.05 - 2.05, 30)  // 29.999999999999996 in IEEE doubles
+        _ = d.update(tilt(2.05, forward: 20), configuration: config)
+        let out = d.update(tilt(32.05, forward: 20), configuration: config)
         XCTAssertTrue(out.becameSustained)
     }
 }

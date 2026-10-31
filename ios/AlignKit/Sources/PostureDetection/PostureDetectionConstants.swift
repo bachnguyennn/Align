@@ -1,9 +1,9 @@
 import Foundation
 
-/// Shared numeric constants of the posture pipeline. The executable specification is the Python
-/// reference in `analytics/experiments/align_reference`; keep both in sync.
+/// Shared numeric constants of the posture pipeline. The executable specification is the Java
+/// reference in `analytics/align-tools`; keep both in sync.
 public enum PostureDetectionConstants {
-    /// Tolerance used when comparing elapsed times with durations, so that e.g. `45.04 - 15.04`
+    /// Tolerance used when comparing elapsed times with durations, so that e.g. `32.05 - 2.05`
     /// (= 29.999999999999996 in IEEE doubles) counts as 30 s.
     public static let timeEpsilon: TimeInterval = 1e-9
 

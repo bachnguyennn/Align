@@ -2,7 +2,7 @@ import Foundation
 import AlignCore
 
 /// Posture state machine, applied to the smoothed tilt of each processed sample.
-/// Mirrors `align_reference/detector.py`.
+/// Mirrors `PostureDetector` in `analytics/align-tools`.
 ///
 /// - neutral → deviating(d) when some direction's component reaches its threshold; `d` is the
 ///   direction with the largest component/threshold ratio. The direction is then locked for the

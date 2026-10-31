@@ -228,8 +228,9 @@ class ComponentsTest {
     @Test
     void floatingPointDurationEdgeCountsAsElapsed() {
         PostureDetector d = new PostureDetector();
-        d.update(tilt(15.04, 20), CFG);
-        DetectorOutput out = d.update(tilt(45.04, 20), CFG);  // 45.04 - 15.04 = 29.999999999999996
+        assertTrue(32.05 - 2.05 < 30);  // 29.999999999999996 in IEEE doubles
+        d.update(tilt(2.05, 20), CFG);
+        DetectorOutput out = d.update(tilt(32.05, 20), CFG);
         assertTrue(out.becameSustained());
     }
 
