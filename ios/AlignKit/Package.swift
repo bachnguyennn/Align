@@ -18,7 +18,7 @@ let package = Package(
         .target(name: "Sensors", dependencies: ["AlignCore"]),
 
         .testTarget(name: "AlignCoreTests", dependencies: ["AlignCore"]),
-        .testTarget(name: "PostureDetectionTests", dependencies: ["PostureDetection"]),
-        .testTarget(name: "SensorsTests", dependencies: ["Sensors"]),
+        .testTarget(name: "PostureDetectionTests", dependencies: ["PostureDetection", "AlignCore"]),
+        .testTarget(name: "SensorsTests", dependencies: ["Sensors", "AlignCore"]),
     ]
 )

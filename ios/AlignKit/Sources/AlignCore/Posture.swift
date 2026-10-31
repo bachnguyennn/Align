@@ -133,7 +133,9 @@ public struct PostureUpdate: Equatable, Sendable {
 
 /// Maps head-frame axes to posture directions. Each axis is a unit vector in the head frame;
 /// a positive (right-hand rule) rotation of the head about it means the named direction.
-/// Defaults are UNVERIFIED until checked on AirPods Pro hardware (task S-05).
+/// For a right-handed head frame, `forwardAxis × lateralAxis` points down.
+/// Defaults assume +X toward the right ear, +Y toward the nose, +Z up (D-011);
+/// they are UNVERIFIED until checked on AirPods Pro hardware (task S-05).
 public struct HeadAxisConvention: Equatable, Codable, Sendable {
     /// Positive rotation = chin toward chest.
     public var forwardAxis: Vector3
@@ -146,7 +148,7 @@ public struct HeadAxisConvention: Equatable, Codable, Sendable {
     }
 
     public static let airPodsDefault = HeadAxisConvention(
-        forwardAxis: Vector3(x: 1, y: 0, z: 0),
+        forwardAxis: Vector3(x: -1, y: 0, z: 0),
         lateralAxis: Vector3(x: 0, y: 1, z: 0)
     )
 }
