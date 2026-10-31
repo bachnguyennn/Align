@@ -115,11 +115,12 @@ final class MockMotionGeneratorTests: XCTestCase {
     }
 
     func testAlternativeAxisConventionIsHonoured() {
-        // If hardware shows the opposite sign, flipping the convention must keep the mock
-        // self-consistent: a +20° forward pose still reads +20° under that convention.
+        // If hardware shows a different sign (e.g. +X toward the right ear, +Y toward the
+        // nose, so chin-down is a rotation about −X), the mock must follow the convention:
+        // a +20° forward pose still reads +20° under that convention.
         let flipped = HeadAxisConvention(
             forwardAxis: Vector3(x: -1, y: 0, z: 0),
-            lateralAxis: Vector3(x: 0, y: -1, z: 0)
+            lateralAxis: Vector3(x: 0, y: 1, z: 0)
         )
         var generator = MockMotionGenerator(scenario: .manual, axes: flipped, noiseScale: 0)
         generator.manualPose = MockHeadPose(forwardDegrees: 20, lateralDegrees: 5)

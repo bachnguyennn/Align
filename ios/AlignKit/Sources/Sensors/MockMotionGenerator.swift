@@ -40,6 +40,11 @@ struct MockHeadPose: Equatable, Sendable {
 ///
 /// Whether `CMAttitude.quaternion` uses the same head→world direction is UNVERIFIED (S-05);
 /// the posture pipeline uses gravity only (D-005), so the mock is consistent for it either way.
+///
+/// The mock follows whatever `axes` says, even if that convention is physically impossible.
+/// Note: in a right-handed frame with +Z up, the chin-down axis × the right-ear-down axis
+/// must point DOWN, but `airPodsDefault` gives +X × +Y = +Z (up), so one of its two signs
+/// cannot match real hardware. See docs/research/airpods-motion-feasibility.md §5.
 struct MockMotionGenerator: Sendable {
     var scenario: MockScenario
     var sampleRateHz: Double
