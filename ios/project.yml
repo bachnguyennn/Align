@@ -41,6 +41,10 @@ targets:
       - path: AlignApp
         excludes:
           - "Info.plist"
+          - "PrivacyInfo.xcprivacy"
+      # Privacy manifest (D-012): copied as a bundle resource.
+      - path: AlignApp/PrivacyInfo.xcprivacy
+        buildPhase: resources
     info:
       path: AlignApp/Info.plist
       properties:

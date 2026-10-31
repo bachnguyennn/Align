@@ -8,6 +8,7 @@ struct PrivacyDataView: View {
 
     @State private var confirmDeleteHistory = false
     @State private var confirmResetCalibration = false
+    @State private var confirmResetSettings = false
     @State private var statusMessage: String?
 
     var body: some View {
@@ -35,7 +36,7 @@ struct PrivacyDataView: View {
             } header: {
                 Text("What Align stores")
             } footer: {
-                Text("Stored only on this iPhone. Deleting the app removes everything.")
+                Text("Stored on this iPhone and kept until you delete it. Like other app data, it is included in your iPhone backups. Deleting the app removes everything.")
             }
 
             Section {
@@ -48,6 +49,10 @@ struct PrivacyDataView: View {
                 }
                 .frame(minHeight: Theme.minimumTapTarget)
                 .disabled(controller.baseline == nil)
+                Button("Reset settings", role: .destructive) {
+                    confirmResetSettings = true
+                }
+                .frame(minHeight: Theme.minimumTapTarget)
                 if let statusMessage {
                     Text(statusMessage)
                         .font(.footnote)
@@ -56,9 +61,7 @@ struct PrivacyDataView: View {
             } header: {
                 Text("Manage data")
             } footer: {
-                if controller.sessionState != .idle {
-                    Text("The current session will be stopped first.")
-                }
+                Text(manageDataFooter)
             }
 
             Section {
@@ -94,6 +97,23 @@ struct PrivacyDataView: View {
         } message: {
             Text("Your saved neutral position is removed. You'll need to calibrate again before monitoring.")
         }
+        .confirmationDialog("Reset settings?", isPresented: $confirmResetSettings, titleVisibility: .visible) {
+            Button("Reset settings", role: .destructive) {
+                settings.resetToDefaults()
+                statusMessage = "Settings restored to defaults."
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Reminder sensitivity, spacing, sound, haptics and demo mode go back to their defaults. Your history and calibration are kept.")
+        }
+    }
+
+    private var manageDataFooter: String {
+        var text = "Each action is separate: deleting history keeps your calibration and settings."
+        if controller.sessionState != .idle {
+            text += " Deleting history or resetting calibration stops the current session first."
+        }
+        return text
     }
 
     private func privacyRow(systemImage: String, title: String, text: String) -> some View {

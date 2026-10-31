@@ -192,6 +192,15 @@ final class SettingsStore {
         }
     }
 
+    /// Restores reminder settings, detection configuration and toggles (including demo mode) to
+    /// their defaults. The calibration baseline is kept; it has its own reset (D-012).
+    func resetToDefaults() {
+        var configuration = PostureConfiguration.default
+        configuration.axes = HeadAxisConvention.airPodsDefault
+        self.configuration = configuration
+        app = AppSettings()
+    }
+
     /// Reminder cooldown in whole minutes (UI range 2–30).
     var reminderCooldownMinutes: Int {
         get { Int((configuration.reminderCooldown / 60).rounded()) }
