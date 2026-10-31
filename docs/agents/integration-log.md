@@ -12,4 +12,4 @@ verified (with CI run links), and what failed.
 | 2026-10-31 | Algorithm (A-01…A-04) + Frontend (F-01…F-09) → `integration` | CI run 41180412382: all jobs green, first full app build; package 126 tests, 0 failures. | Green |
 | 2026-10-31 | D-016 deferred reminder, Strict 12°, app test summary → `integration` | CI run 41197474300: all green; package 127 tests, app 32 tests, 0 failures; pytest 104 pass locally. | Green → fast-forwarded to `main` |
 | 2026-10-31 | Java reference tools (D-015) → `integration` | CI run 41224929995: all 6 jobs green; JUnit 177, package 127, app 32, pytest 104; 0 failures. | Green → fast-forwarded to `main` |
-| 2026-10-31 | Python tools and `python` CI job removed; edge test uses 32.05 − 2.05 | See next CI run. | Pending |
+| 2026-10-31 | Python tools and `python` CI job removed; edge test uses 32.05 − 2.05 | CI run 41225574214: all 5 jobs green; JUnit 177, package 127, app 32; 0 failures. CoreData "Failed to stat default.store" annotations come from the app host's first SwiftData launch on a fresh simulator (harmless). | Green → `main` |
