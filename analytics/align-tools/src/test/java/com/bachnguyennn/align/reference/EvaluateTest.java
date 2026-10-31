@@ -53,6 +53,16 @@ class EvaluateTest {
     }
 
     @Test
+    void driftTableRendersAndRejectsASlouchButNotAStillUser() {
+        String drift = Evaluate.calibrationDrift(1);
+        assertTrue(drift.contains("3° / 2 s (default)"), drift);
+        assertTrue(drift.contains("| still, sway 0.5° | 0/1 | 0/1 | 0/1 | 0/1 | 0/1 | 0/1 |"), drift);
+        assertTrue(drift.contains("| slouch 10° over the 10 s (sway 0.5°) |"), drift);
+        String row = drift.lines().filter(l -> l.startsWith("| slouch 10°")).findFirst().orElseThrow();
+        assertEquals("1/1", row.split("\\|")[4].trim(), row);  // default column
+    }
+
+    @Test
     void medianOfEvenAndOddLists() {
         assertEquals(2.0, Evaluate.median(List.of(3.0, 1.0, 2.0)));
         assertEquals(2.5, Evaluate.median(List.of(4.0, 1.0, 2.0, 3.0)));

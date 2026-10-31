@@ -194,6 +194,84 @@ class ComponentsTest {
         assertEquals(q10.meanGravity(), q09.meanGravity());
     }
 
+    /** 251 samples (10 s at 25 Hz) of a steady slouch from 0 to {@code degrees} forward. */
+    private static List<Vec3> slouchGravities(double degrees) {
+        List<Vec3> gs = new ArrayList<>();
+        for (int i = 0; i < 251; i++) {
+            gs.add(gFor(degrees * i / 250.0, 0.5));
+        }
+        return gs;
+    }
+
+    /** D-020: a steady 10 deg slouch passes the spread rule but fails the drift rule. */
+    @Test
+    void calibrationDriftRejectsASlowSlouch() {
+        PostureConfiguration noDrift = CFG.replacing(b -> b.calibrationMaxDriftDegrees(180.0));
+        assertNull(runCalibration(slouchGravities(10.0), noDrift).failure());
+        assertEquals(CalibrationFailure.TOO_MUCH_MOVEMENT, runCalibration(slouchGravities(10.0), CFG).failure());
+        // 3 deg over 10 s: first and last 2 s means are 2.4 deg apart, under the 3 deg limit.
+        assertNull(runCalibration(slouchGravities(3.0), CFG).failure());
+        assertEquals(CalibrationFailure.TOO_MUCH_MOVEMENT, runCalibration(slouchGravities(4.0), CFG).failure());
+    }
+
+    /** 251 samples at neutral with a 1 s (25-sample) fidget to 10 deg forward starting at {@code start}. */
+    private static List<Vec3> fidgetAt(int start) {
+        List<Vec3> gs = new ArrayList<>();
+        for (int i = 0; i < 251; i++) {
+            gs.add(i >= start && i < start + 25 ? gFor(10.0) : gFor(0.0, 0.5));
+        }
+        return gs;
+    }
+
+    /** D-020: the drift window means use spread-rule inliers, so a fidget at either end is not drift. */
+    @Test
+    void driftIgnoresABriefFidgetInTheFirstOrLastWindow() {
+        for (int start : new int[] {0, 226}) {  // first 1 s, last 1 s (t = 9.04 .. 10.0)
+            CalibrationStep step = runCalibration(fidgetAt(start), CFG);
+            assertNull(step.failure(), "fidget at sample " + start);
+            assertApprox(0.0, angleBetweenDegrees(step.meanGravity(), gFor(0.0, 0.5)), 1e-9);
+            // Counting every sample, the fidget would shift its window's mean by ~5 deg.
+            List<Double> ts = new ArrayList<>();
+            for (int i = 0; i < 251; i++) {
+                ts.add(i / 25.0);
+            }
+            assertTrue(CalibrationService.driftDegrees(fidgetAt(start), ts, 2.0) > 3.0);
+        }
+    }
+
+    @Test
+    void driftWindowWithoutInliersFails() {
+        // The first 6 samples (t ≤ 0.2 s, 2.4 % of them) are outliers: the spread rule passes but a
+        // 0.2 s drift window has no inliers.
+        List<Vec3> gs = new ArrayList<>();
+        for (int i = 0; i < 251; i++) {
+            gs.add(i < 6 ? gFor(15.0) : gFor(0.0, 0.5));
+        }
+        PostureConfiguration shortWindow = CFG.replacing(b -> b.calibrationDriftWindow(0.2));
+        assertEquals(CalibrationFailure.TOO_MUCH_MOVEMENT, runCalibration(gs, shortWindow).failure());
+        assertNull(runCalibration(gs, CFG).failure());  // the 2 s window still has inliers
+        List<Boolean> none = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            none.add(false);
+        }
+        assertTrue(Double.isNaN(CalibrationService.driftDegrees(List.of(gFor(0), gFor(0), gFor(0)),
+                List.of(0.0, 1.0, 2.0), none, 2.0)));
+    }
+
+    @Test
+    void driftWindowsIncludeTheirEdgesAndUseTimestamps() {
+        // Samples at t = 0, 1, 2, ..., 10 s: 0 deg up to t = 2 s, then 10 deg from t = 3 s.
+        List<Vec3> gs = new ArrayList<>();
+        List<Double> ts = new ArrayList<>();
+        for (int i = 0; i <= 10; i++) {
+            gs.add(gFor(i <= 2 ? 0.0 : 10.0));
+            ts.add((double) i);
+        }
+        assertApprox(10.0, CalibrationService.driftDegrees(gs, ts, 2.0), 1e-9);  // first window t = 0..2 (edge included)
+        assertApprox(7.5, CalibrationService.driftDegrees(gs, ts, 3.0), 0.05);  // mean of 0, 0, 0, 10 is ~2.5 deg
+        assertApprox(0.0, CalibrationService.driftDegrees(List.of(gFor(5.0)), List.of(4.0), 2.0), 1e-12);
+    }
+
     @Test
     void quantileComparisonToleratesRounding() {
         assertTrue(CalibrationService.hasEnoughInliers(225, 250, 0.9));

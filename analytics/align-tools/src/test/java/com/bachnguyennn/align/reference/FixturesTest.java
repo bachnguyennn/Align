@@ -222,6 +222,16 @@ class FixturesTest {
         assertEquals(List.of("succeeded"), Fixtures.replay(fx).calibrationOutcomes());
     }
 
+    /** The slow-slouch fixture is about D-020: only the drift rule rejects it. */
+    @Test
+    void slowSlouchFixtureIsRejectedByTheDriftRule() {
+        ObjectNode fx = Fixtures.loadFixture(Fixtures.fixtureDir().resolve("calibration_slow_slouch.json"));
+        assertEquals(List.of("tooMuchMovement"), Fixtures.replay(fx).calibrationOutcomes());
+        PostureConfiguration noDrift = PostureConfiguration.fromOverrides(fx.get("config"))
+                .replacing(b -> b.calibrationMaxDriftDegrees(180.0));
+        assertEquals(List.of("succeeded"), Fixtures.replay(fx, noDrift).calibrationOutcomes());
+    }
+
     @Test
     void replayRejectsUnknownActions() {
         ObjectNode fx = Fixtures.loadFixture(fixtures().get(0));

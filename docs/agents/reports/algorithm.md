@@ -330,3 +330,80 @@ size limit was raised from 1.25 to 2 MiB (the total is now about 1.4 MiB).
 6. Recorded sessions can be replayed (`exec:java@replay`), but recordings turned into fixtures
    are not wired into the tests yet (the suites expect `motion/` to contain generator scenarios
    only); suggested: a separate `recorded/` folder.
+
+# A-07 / D-020: neutral calibration drift rule
+
+Based on `main` at `e4e2a17` (AlignCore `calibrationMaxDriftDegrees` = 3, `calibrationDriftWindow`
+= 2). Defaults confirmed, not changed.
+
+## Deliverables
+
+- `CalibrationService` (Java and Swift, identical): after the spread rule, `tooMuchMovement` if
+  the normalized mean gravity of the samples with t − start ≤ window and that of the samples with
+  last − t ≤ window are more than `calibrationMaxDriftDegrees` apart (`driftDegrees`, public for
+  tests). Window edges are inclusive with the usual 1e-9 time tolerance; the comparison is
+  `!(drift <= limit)` so NaN is rejected the same way in both. Java `PostureConfiguration` mirrors
+  the two fields (fixture keys `calibrationMaxDriftDegrees`, `calibrationDriftWindow`; the Swift
+  replay test reads them too).
+- Scenario and Java-generated fixture `calibration_slow_slouch`: a steady 0→10° slouch over the
+  10 s calibration (ten short eased keyframe segments). The spread rule alone accepts it (10/10
+  seeds checked), the drift rule rejects it (10/10): expected `tooMuchMovement`,
+  `needsCalibration`. A first version with one cosine-eased ramp was rejected by the spread
+  rule already (samples cluster at both ends), so it did not test the new rule.
+- Tests: JUnit `calibrationDriftRejectsASlowSlouch`, `driftWindowsIncludeTheirEdgesAndUseTimestamps`,
+  `slowSlouchFixtureIsRejectedByTheDriftRule`, `driftTableRendersAndRejectsASlouchButNotAStillUser`,
+  plus the parameterized fixture tests for the new file. Swift: `testDriftRejectsASlowSlouch`,
+  `testDriftWindowsIncludeTheirEdgesAndUseTimestamps`, `testCalibrationSlowSlouch`,
+  `testSlowSlouchFixtureIsRejectedByTheDriftRule`.
+- Evaluation table "D-020" in `results/evaluation.md` and `docs/research/algorithm-evaluation.md`.
+
+## Tests actually run
+
+`./mvnw -B -ntp verify`: **299 JUnit tests, 0 failures** (284 before). Swift not compiled
+locally (no toolchain); the changes are the drift helper in `CalibrationService.swift` and tests.
+
+## Existing fixtures
+
+`rereference --check`: 0 of the 13 previous fixtures differ, so no reference block was
+rewritten; every committed calibration drifts less than 3° between its first and last 2 s.
+
+## Evidence for the defaults
+
+Rejections out of 20: steady slouch 0° / 3° / 5° / 10° over the 10 s → 0 / 4 / 20 / 20 with
+3° / 2 s (spread rule alone: 0 / 0 / 0 / 1). Still users at sway 0.5° / 1° / 1.5° / 2° / 3° →
+0 / 0 / 4 / 7 / 10 after the inlier revision below (spread rule alone: 0 / 0 / 0 / 0 / 5). 3° / 3 s halves the false rejections
+at 2° sway (4/20) but misses 4/20 of the 5° slouches; 4° / 2 s misses 10/20; 2° / 2 s rejects
+4/20 still users already at 1° sway. Kept 3° / 2 s; switch to 3° / 3 s if real recordings show
+still users with 1.5–2° of sway.
+
+## Side effect on the D-017 quantile table
+
+With the drift rule in place, the regenerated D-017 (iv) table accepts fewer very unsteady
+users (still, sway 2°: 14/20, was 20/20; sway 3°: 10/20, was 15/20) and rejects the eased slow
+slouch 20/20 (was 9/20). The quantile choice (0.9) is unaffected: it still decides the fidget
+rows. With the first version of the rule (all samples in a window), a 1 s fidget inside the
+first or last 2 s failed (18/20 accepted); the inlier-only revision below fixes that.
+
+## Revision: window means from spread-rule inliers (contract at 9c8be49)
+
+Accepted proposal. The branch was rebased onto `main` at `9c8be49` (fast-forward was not
+possible: `main` had only the contract commit, the four D-020 commits were not on it yet).
+
+- `driftDegrees` (Java and Swift) now takes the spread-rule inlier mask: only inliers are
+  averaged, the windows are still measured from the first and last timestamps of all samples,
+  and an empty window returns NaN, which the existing `!(drift <= limit)` check turns into
+  `.tooMuchMovement` in both languages. The convenience form without a mask (Java overload,
+  Swift default `inliers: nil`) counts every sample and is used only by tests.
+- New tests in both suites: a 1 s fidget to 10° in the first 1 s and in the last 1 s is accepted
+  with an unbiased baseline (while the all-samples drift of the same data is > 3°), and a window
+  without inliers (first 0.2 s all outliers, `calibrationDriftWindow` 0.2) fails.
+- `./mvnw -B -ntp verify`: **301 JUnit tests, 0 failures**. `rereference --check`: 0 of 14 stale,
+  so no reference block was rewritten: no committed fixture has an outlier inside a drift window
+  that mattered (the brief-fidget fixture's fidget is at 4 s, and the slow-slouch fixture is still
+  rejected because its ramp samples are all inliers).
+- Regenerated rows (20 seeds): one 1 s fidget to 10° accepted 20/20 (was 18/20), to 20° 19/20 (was
+  18/20). The remaining 20° rejection has the fidget at 8–9 s: the 0.5 s smoothing leaves a decay
+  tail whose samples below 5° are inliers and shift the last window by just over 3° (it passes
+  with a 4° limit); that residual tilt is real, so the rejection is defensible. Drift table: only
+  two cells moved by one run (sway 2° at 4° / 2 s: 3/20, was 4/20; sway 3° at the default:
+  10/20, was 11/20); every slouch row is unchanged. Defaults 3° / 2 s still confirmed.

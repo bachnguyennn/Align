@@ -10,6 +10,13 @@ import AlignCore
 /// at least `calibrationSpreadQuantile` of the samples (1.0 = the v1 rule "every sample").
 /// Baseline = normalized mean of the inliers, so a brief fidget does not bias it; when every
 /// sample is an inlier this is exactly `m`, identical to v1.
+///
+/// Drift rule (D-020), checked after the spread rule: fails with `.tooMuchMovement` if the
+/// normalized mean gravity of the inliers in the first `calibrationDriftWindow` seconds
+/// (t − start ≤ window) and that of the inliers in the last `calibrationDriftWindow` seconds
+/// (last − t ≤ window) are more than `calibrationMaxDriftDegrees` apart, or if either window has
+/// no inliers. It catches a slow slouch, which the spread rule cannot (every sample stays near the
+/// mean of the ramp); using inliers only, a brief fidget at either end does not count as drift.
 /// Mirrors `CalibrationService` in `analytics/align-tools`.
 public struct CalibrationService: Sendable {
     public enum Step: Equatable, Sendable {
@@ -22,6 +29,7 @@ public struct CalibrationService: Sendable {
     public private(set) var startTimestamp: TimeInterval?
     public private(set) var lastTimestamp: TimeInterval?
     private var samples: [Vector3] = []
+    private var timestamps: [TimeInterval] = []
 
     public init() {}
 
@@ -32,6 +40,7 @@ public struct CalibrationService: Sendable {
         startTimestamp = nil
         lastTimestamp = nil
         samples = []
+        timestamps = []
     }
 
     public mutating func cancel() {
@@ -39,6 +48,45 @@ public struct CalibrationService: Sendable {
         startTimestamp = nil
         lastTimestamp = nil
         samples = []
+        timestamps = []
+    }
+
+    /// Angle (degrees) between the normalized mean of the inliers with t − first ≤ window and that
+    /// of the inliers with last − t ≤ window (D-020); `first` and `last` are the first and last
+    /// timestamps of all samples. NaN if either window has no inliers (the caller then fails).
+    /// `inliers` nil counts every sample. `gravities`, `times` and `inliers` are parallel; times
+    /// are in increasing order.
+    public static func driftDegrees(
+        _ gravities: [Vector3],
+        times: [TimeInterval],
+        inliers: [Bool]? = nil,
+        window: TimeInterval
+    ) -> Double {
+        guard let first = times.first, let last = times.last else {
+            return .nan
+        }
+        var head = Vector3.zero
+        var tail = Vector3.zero
+        var headCount = 0
+        var tailCount = 0
+        for (i, g) in gravities.enumerated() where i < times.count {
+            if let mask = inliers, i < mask.count, !mask[i] {
+                continue
+            }
+            let t = times[i]
+            if t - first <= window + PostureDetectionConstants.timeEpsilon {
+                head = head + g
+                headCount += 1
+            }
+            if last - t <= window + PostureDetectionConstants.timeEpsilon {
+                tail = tail + g
+                tailCount += 1
+            }
+        }
+        if headCount == 0 || tailCount == 0 {
+            return .nan
+        }
+        return TiltEstimator.angleDegrees(between: head.normalized, and: tail.normalized)
     }
 
     /// 0...1 while active; 0 before the first sample.
@@ -59,6 +107,7 @@ public struct CalibrationService: Sendable {
         }
         lastTimestamp = timestamp
         samples.append(gravity)
+        timestamps.append(timestamp)
         let elapsed = timestamp - (startTimestamp ?? timestamp)
         let duration = configuration.calibrationDuration
         if elapsed + PostureDetectionConstants.timeEpsilon < duration {
@@ -66,6 +115,7 @@ public struct CalibrationService: Sendable {
         }
 
         let collected = samples
+        let times = timestamps
         cancel()
         let count = collected.count
         if count < configuration.minimumCalibrationSamples {
@@ -82,13 +132,27 @@ public struct CalibrationService: Sendable {
         let limit = configuration.calibrationMaxSpreadDegrees
         var inliers = 0
         var inlierTotal = Vector3.zero
+        var isInlier: [Bool] = []
+        isInlier.reserveCapacity(count)
         for g in collected {
-            if TiltEstimator.angleDegrees(between: g, and: mean) <= limit {
+            let inlier = TiltEstimator.angleDegrees(between: g, and: mean) <= limit
+            isInlier.append(inlier)
+            if inlier {
                 inliers += 1
                 inlierTotal = inlierTotal + g
             }
         }
         if !CalibrationService.hasEnoughInliers(inliers, of: count, quantile: configuration.calibrationSpreadQuantile) {
+            return .failed(.tooMuchMovement, sampleCount: count)
+        }
+        // A window without inliers gives NaN, which fails here (same as Java's !(x <= limit)).
+        let drift = CalibrationService.driftDegrees(
+            collected,
+            times: times,
+            inliers: isInlier,
+            window: configuration.calibrationDriftWindow
+        )
+        if !(drift <= configuration.calibrationMaxDriftDegrees) {
             return .failed(.tooMuchMovement, sampleCount: count)
         }
         let baselineGravity = inliers == count ? mean : inlierTotal.normalized

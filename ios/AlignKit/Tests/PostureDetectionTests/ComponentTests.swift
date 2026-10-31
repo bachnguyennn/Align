@@ -143,6 +143,70 @@ final class CalibrationServiceTests: XCTestCase {
         XCTAssertEqual(finalStep(gs, config), finalStep(gs, v1))
     }
 
+    /// 251 samples (10 s at 25 Hz) of a steady slouch from 0 to `degrees` forward.
+    private func slouchGravities(_ degrees: Double) -> [Vector3] {
+        (0..<251).map { i in Pose.gravity(forward: degrees * Double(i) / 250, lateral: 0.5) }
+    }
+
+    /// D-020: a steady 10° slouch passes the spread rule but fails the drift rule.
+    func testDriftRejectsASlowSlouch() {
+        var noDrift = config
+        noDrift.calibrationMaxDriftDegrees = 180
+        guard case .succeeded? = finalStep(slouchGravities(10), noDrift) else {
+            return XCTFail("expected the spread rule alone to accept the slouch")
+        }
+        XCTAssertEqual(finalStep(slouchGravities(10), config), .failed(.tooMuchMovement, sampleCount: 251))
+        // 3° over 10 s: the first and last 2 s means are 2.4° apart, under the 3° limit.
+        guard case .succeeded? = finalStep(slouchGravities(3), config) else {
+            return XCTFail("expected a 3° slouch to pass")
+        }
+        XCTAssertEqual(finalStep(slouchGravities(4), config), .failed(.tooMuchMovement, sampleCount: 251))
+    }
+
+    /// 251 samples at neutral with a 1 s (25-sample) fidget to 10° forward starting at `start`.
+    private func fidgetAt(_ start: Int) -> [Vector3] {
+        (0..<251).map { i in
+            i >= start && i < start + 25 ? Pose.gravity(forward: 10) : Pose.gravity(forward: 0, lateral: 0.5)
+        }
+    }
+
+    /// D-020: the drift window means use spread-rule inliers, so a fidget at either end is not drift.
+    func testDriftIgnoresABriefFidgetInTheFirstOrLastWindow() {
+        let ts = (0..<251).map { Double($0) / 25 }
+        for start in [0, 226] {  // first 1 s, last 1 s (t = 9.04 ... 10.0)
+            guard case let .succeeded(mean, _)? = finalStep(fidgetAt(start), config) else {
+                XCTFail("fidget at sample \(start) should be accepted")
+                continue
+            }
+            XCTAssertEqual(TiltEstimator.angleDegrees(between: mean, and: Pose.gravity(forward: 0, lateral: 0.5)), 0, accuracy: 1e-9)
+            // Counting every sample, the fidget would shift its window's mean by ~5°.
+            XCTAssertGreaterThan(CalibrationService.driftDegrees(fidgetAt(start), times: ts, window: 2), 3)
+        }
+    }
+
+    func testDriftWindowWithoutInliersFails() {
+        // The first 6 samples (t <= 0.2 s, 2.4 % of them) are outliers: the spread rule passes but a
+        // 0.2 s drift window has no inliers.
+        let gs = (0..<251).map { i in i < 6 ? Pose.gravity(forward: 15) : Pose.gravity(forward: 0, lateral: 0.5) }
+        var shortWindow = config
+        shortWindow.calibrationDriftWindow = 0.2
+        XCTAssertEqual(finalStep(gs, shortWindow), .failed(.tooMuchMovement, sampleCount: 251))
+        guard case .succeeded? = finalStep(gs, config) else {
+            return XCTFail("the 2 s window still has inliers")
+        }
+        let g = Pose.gravity(forward: 0)
+        XCTAssertTrue(CalibrationService.driftDegrees([g, g, g], times: [0, 1, 2], inliers: [false, false, false], window: 2).isNaN)
+    }
+
+    func testDriftWindowsIncludeTheirEdgesAndUseTimestamps() {
+        // Samples at t = 0, 1, ..., 10 s: 0° up to t = 2 s, then 10° from t = 3 s.
+        let gs = (0...10).map { i in Pose.gravity(forward: i <= 2 ? 0 : 10) }
+        let ts = (0...10).map { Double($0) }
+        XCTAssertEqual(CalibrationService.driftDegrees(gs, times: ts, window: 2), 10, accuracy: 1e-9)
+        XCTAssertEqual(CalibrationService.driftDegrees(gs, times: ts, window: 3), 7.5, accuracy: 0.05)
+        XCTAssertEqual(CalibrationService.driftDegrees([Pose.gravity(forward: 5)], times: [4], window: 2), 0, accuracy: 1e-12)
+    }
+
     func testQuantileComparisonToleratesRounding() {
         XCTAssertTrue(CalibrationService.hasEnoughInliers(225, of: 250, quantile: 0.9))
         XCTAssertFalse(CalibrationService.hasEnoughInliers(224, of: 250, quantile: 0.9))

@@ -30,7 +30,9 @@ mirrors it line for line:
 3. Calibration: 10 s of smoothed gravity; fails `insufficientSamples` if < 100 samples, and
    (D-017 (b)) `tooMuchMovement` unless at least `calibrationSpreadQuantile` = 90 % of the samples
    are within 5° of the mean; baseline = normalized mean of those inliers (identical to the v1
-   mean when every sample is an inlier).
+   mean when every sample is an inlier). D-020: also `tooMuchMovement` if the mean gravity of the
+   inliers in the first 2 s and in the last 2 s (`calibrationDriftWindow`) are more than 3°
+   (`calibrationMaxDriftDegrees`) apart, or a window has no inliers; this catches a slow slouch.
 3b. Optional guided nod (D-017 (a)): after calibration the user nods once; the forward axis line
    is the principal axis of the head rotation vectors (≥ 3°) in the baseline plane, its sign taken
    from the default axes; lateral = `g0 × forward`. Rejected if more than 45° from the default
@@ -236,7 +238,9 @@ Head turns never count (heading is excluded by construction). A tilt up to ~40°
 direction is indistinguishable from a yawed earbud and is learned as such: this is the price of
 supporting earbud yaw up to 45°, and why the nod must be guided.
 
-**(iv) Neutral calibration spread quantile** (cells: runs with the wanted outcome):
+**(iv) Neutral calibration spread quantile** (cells: runs with the wanted outcome; measured
+before the D-020 drift rule; the current report in `results/evaluation.md` includes the drift
+rule, see the next section):
 
 | 10 s calibration | want | q 1.0 (v1) | q 0.95 | **q 0.9** | q 0.8 |
 |---|---|---|---|---|---|
@@ -253,9 +257,50 @@ supporting earbud yaw up to 45°, and why the nod must be guided.
 and repeated fidgets; 0.8 starts accepting users who look around. Because the baseline is the
 inlier mean, an accepted fidget leaves only 0.5° of baseline error (the same as no fidget). The
 cost: a slow drift during calibration (slouching 10° over 10 s) is accepted more often than with
-the v1 rule (11/20 vs 4/20), leaving a ≈ 4.4° biased baseline; neither rule detects drift well
-(see Limitations). Gentle ±6° nodding is attenuated to ±4.4° by the smoothing and accepted by
-every rule, with a harmless 0.3° baseline error.
+the v1 rule (11/20 vs 4/20), leaving a ≈ 4.4° biased baseline; neither rule detects drift well,
+which led to the D-020 drift rule below. Gentle ±6° nodding is attenuated to ±4.4° by the
+smoothing and accepted by every rule, with a harmless 0.3° baseline error.
+
+### D-020: neutral calibration drift rule
+
+Rule (contract, D-020): the normalized mean gravity of the spread-rule inliers (within 5° of the
+mean) in the first 2 s and in the last 2 s must be at most 3° apart; a window with no inliers
+fails. Using inliers only means a brief fidget at either end is not taken for drift.
+
+Java reference, 20 seeds per cell. A steady slouch is ramped over the whole 10 s calibration (ten
+short eased segments, so the samples spread evenly around the mean, which the spread rule
+accepts). Cells: calibrations rejected with `tooMuchMovement`; columns
+`calibrationMaxDriftDegrees` / `calibrationDriftWindow`; "no drift rule" is the spread rule alone
+(quantile 0.9).
+
+| 10 s neutral calibration | no drift rule | 2° / 2 s | **3° / 2 s (default)** | 4° / 2 s | 3° / 1 s | 3° / 3 s |
+|---|---|---|---|---|---|---|
+| slouch 0° over the 10 s (sway 0.5°) | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 |
+| slouch 3° | 0/20 | 16/20 | 4/20 | 0/20 | 6/20 | 2/20 |
+| slouch 5° | 0/20 | 20/20 | 20/20 | 10/20 | 20/20 | 16/20 |
+| slouch 10° | 1/20 | 20/20 | 20/20 | 20/20 | 20/20 | 20/20 |
+| still, sway 0.5° | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 | 0/20 |
+| still, sway 1.0° | 0/20 | 4/20 | 0/20 | 0/20 | 1/20 | 0/20 |
+| still, sway 1.5° | 0/20 | 8/20 | 4/20 | 1/20 | 4/20 | 3/20 |
+| still, sway 2.0° | 0/20 | 12/20 | 7/20 | 3/20 | 9/20 | 4/20 |
+| still, sway 3.0° | 5/20 | 16/20 | 10/20 | 9/20 | 14/20 | 11/20 |
+
+The spread rule alone accepts every steady slouch (19/20 even at 10°, which biases the baseline
+by about 5°). The default 3° / 2 s rejects every slouch of 5° or more and none of the still
+users at the modelled 0.5° sway or at 1°; a 3° slouch (≈ 1.5° baseline bias) mostly passes,
+which is acceptable. The cost is false rejection of very unsteady users: 4/20 at 1.5° sway, 7/20
+at 2°, and 10/20 at 3°, where the spread rule already rejects 5/20. Those users are asked to
+recalibrate. 3° / 3 s halves the rejections at 2° sway (4/20) but misses 4/20 of the 5°
+slouches; 4° / 2 s misses half of them; 2° / 2 s rejects too many still users. **The defaults
+3° / 2 s are confirmed**; if real recordings show still users with 1.5–2° of sway, switch to
+3° / 3 s.
+
+Fidgets at either end: a 1 s fidget to 10° is accepted 20/20 wherever it falls (with the first
+version of the rule, which averaged all samples in a window, a fidget inside the first or last
+2 s failed: 18/20). A 1 s fidget to 20° is accepted 19/20; the one rejected run has the fidget
+at 8–9 s, where the 0.5 s smoothing leaves a decay tail whose samples below 5° are inliers and
+shift the last window by just over 3° (it passes with a 4° limit). That residual posture is real,
+so the rejection is defensible.
 
 ### Throughput
 
@@ -284,7 +329,9 @@ within 0.05°; they pass in CI (`swift-package` and `swift-linux`).
   fit) and ask for one deliberate nod of about 20–30°, down or up. Keep the D-017 defaults:
   `axisCalibrationMinimumNodDegrees` 12°, `axisCalibrationMaxYawDegrees` 45°,
   `axisCalibrationMaxOffAxisRatio` 0.35, `axisCalibrationDuration` 8 s,
-  `calibrationSpreadQuantile` 0.9 (tables above). On `.inconsistentMotion` ask the user to nod
+  `calibrationSpreadQuantile` 0.9, and (D-020) `calibrationMaxDriftDegrees` 3° with
+  `calibrationDriftWindow` 2 s (tables above). On a calibration `tooMuchMovement` the UI should
+  say "hold still and upright for 10 s", which covers both a fidgety and a slouching user. On `.inconsistentMotion` ask the user to nod
   straight down; on `.noNodDetected` to nod further.
 - Record real AirPods sessions (D-017 (d); `exec:java@replay`, format in
   `shared/fixtures/README.md`) before tuning further; the first things to check are the learned
@@ -335,10 +382,11 @@ while", not "forward head posture detected".
 - **The user may nod wrongly.** A diagonal tilt up to ~40° from forward is accepted and learned
   as earbud yaw; small nods (< ~15° after smoothing) are rejected; with large sway (≥ 2°) one
   nod gives yaw errors of 4–6° on average (up to 12–18°). The nod must be guided by the UI.
-- **A slow drift during the neutral calibration is not detected.** Slouching 10° over the 10 s
-  is accepted 11/20 times with quantile 0.9 (4/20 with the v1 rule) and biases the baseline by
-  ≈ 4.4°. A trend check (e.g. first vs last 2 s more than 3° apart ⇒ `tooMuchMovement`) would
-  catch it; proposed, not implemented (it would change the contract).
+- **Calibration drift detection trades off against unsteady users (D-020).** Slouches of 5° or
+  more during the calibration are now rejected, but still users with 1.5–3° of sway are
+  rejected 4/20 to 11/20 times and must recalibrate; a slouch of about 3° passes and biases the
+  baseline by about 1.5°. Both depend on the sway level of real users, which is unknown until
+  recordings exist.
 - **Earbud hand-off (`sensorLocation` changes) is not treated as an interrupt.** Samples are
   processed as continuous data. An interrupt would split episodes and delay reminders without
   fixing the real risk: the two earbuds may sit at different angles, and the baseline and the
