@@ -182,25 +182,32 @@ jobs:
       - name: Build package for iOS Simulator (compiles #if os(iOS) code)
         working-directory: ios/AlignKit
         run: |
-          schemes_json="$(xcodebuild -list -json 2>/dev/null)"
-          scheme="$(printf '%s' "$schemes_json" | python3 -c '
+          xcodebuild -list -json > "$GITHUB_WORKSPACE/ci-logs/package-schemes.json"
+          # Multi-product packages get an aggregate "<Package>-Package" scheme; if it is
+          # missing, build each library scheme instead.
+          schemes="$(python3 -c '
           import json, sys
-          d = json.load(sys.stdin)
+          d = json.load(open(sys.argv[1]))
           schemes = (d.get("workspace") or d.get("project") or {}).get("schemes", [])
-          print("AlignKit-Package" if "AlignKit-Package" in schemes else (schemes[0] if schemes else ""))
-          ')"
-          if [[ -z "$scheme" ]]; then
-            echo "::error title=No package scheme::xcodebuild -list found no schemes for ios/AlignKit."
+          print("Available schemes: %s" % schemes, file=sys.stderr)
+          libs = ["AlignCore", "PostureDetection", "Sensors"]
+          chosen = ["AlignKit-Package"] if "AlignKit-Package" in schemes else [s for s in libs if s in schemes]
+          print("\n".join(chosen))
+          ' "$GITHUB_WORKSPACE/ci-logs/package-schemes.json")"
+          if [[ -z "$schemes" ]]; then
+            echo "::error title=No package scheme::xcodebuild -list found neither AlignKit-Package nor the library schemes in ios/AlignKit."
             exit 1
           fi
-          echo "Using scheme $scheme"
-          xcodebuild build \
-              -scheme "$scheme" \
-              -destination 'generic/platform=iOS Simulator' \
-              -derivedDataPath "$RUNNER_TEMP/dd-package" \
-              CODE_SIGNING_ALLOWED=NO 2>&1 \
-            | tee "$GITHUB_WORKSPACE/ci-logs/package-ios-build.log" \
-            | xcbeautify --renderer github-actions
+          while IFS= read -r scheme; do
+            echo "Building scheme $scheme for iOS Simulator"
+            xcodebuild build \
+                -scheme "$scheme" \
+                -destination 'generic/platform=iOS Simulator' \
+                -derivedDataPath "$RUNNER_TEMP/dd-package" \
+                CODE_SIGNING_ALLOWED=NO 2>&1 \
+              | tee "$GITHUB_WORKSPACE/ci-logs/package-ios-build-$scheme.log" \
+              | xcbeautify --renderer github-actions
+          done <<< "$schemes"
 
       - name: Annotate failure
         if: failure()
