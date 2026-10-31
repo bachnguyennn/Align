@@ -9,3 +9,5 @@ verified (with CI run links), and what failed.
 | 2026-10-31 | QA agent branch (Q-01…Q-04) → main | Workflow YAML parsed, shell checked with shellcheck by QA locally; first GitHub run triggered by this push. | Merged; see next entry for CI result |
 | 2026-10-31 | CI run #1 (b4c5abc) | macOS package build + 0 failures; iOS Simulator package build OK; Linux failed: sync `@MainActor` XCTest method not callable from Linux test discovery. | Fixed in 9057039 |
 | 2026-10-31 | CI run #2 (9057039) — https://github.com/bachnguyennn/FixMySpine/actions/runs/41179990821 | All 5 jobs green; XCTest: 76 tests, 0 failures (AlignCore + Sensors). App and Python jobs skipped (not merged yet). | Green |
+| 2026-10-31 | Algorithm (A-01…A-04) + Frontend (F-01…F-09) → `integration` | CI run 41180412382: all jobs green, first full app build; package 126 tests, 0 failures. | Green |
+| 2026-10-31 | D-016 deferred reminder, Strict 12°, app test summary → `integration` | CI run 41197474300: all green; package 127 tests, app 32 tests, 0 failures; pytest 104 pass locally. | Green → fast-forwarded to `main` |
