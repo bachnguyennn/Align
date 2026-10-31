@@ -99,6 +99,50 @@ class GeneratorTest {
         }
     }
 
+    /** The D-017 fixtures were written by this generator, so it reproduces them exactly. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("scenarios")
+    void javaGeneratedFixturesAreReproducedExactly(String name) {
+        ObjectNode committed = Fixtures.loadFixture(Fixtures.fixtureDir().resolve(name + ".json"));
+        if (!committed.get("generator").path("runtime").asText().startsWith("java")) {
+            assertTrue(Generator.PYTHON_SCENARIOS.contains(name), name);
+            return;
+        }
+        assertTrue(!Generator.PYTHON_SCENARIOS.contains(name), name);
+        ObjectNode generated = Fixtures.loadFixture(firstRun.resolve(name + ".json"));
+        for (String key : List.of("samples", "truth", "expected", "reference", "actions", "config", "description")) {
+            assertEquals(committed.get(key), generated.get(key), key);
+        }
+    }
+
+    /** A zero mount yaw leaves the pose model bit for bit unchanged (existing scenarios are unaffected). */
+    @Test
+    void zeroMountYawIsTheOldPoseModel() {
+        assertEquals(Pose.poseAttitude(12, -5, 33, 8, -3), Pose.poseAttitude(12, -5, 33, 8, -3, 0.0, null));
+        assertTrue(!Pose.poseAttitude(12, -5, 33, 8, -3).equals(Pose.poseAttitude(12, -5, 33, 8, -3, 10.0, null)));
+        ObjectNode truth = (ObjectNode) Generator.synthesize(Generator.steadyNeutral()).fixture().get("truth");
+        assertTrue(!truth.get("mountDegrees").has("yaw"));
+        ObjectNode yawed = (ObjectNode) Generator.synthesize(Generator.nodAxisCalibrationYawedEarbud()).fixture().get("truth");
+        assertEquals(25.0, yawed.get("mountDegrees").get("yaw").asDouble());
+    }
+
+    /** Positive mount yaw is learned as positive yaw (the sign documented in the fixtures README). */
+    @Test
+    void trueYawMatchesMountYawWithoutPitchAndRoll() {
+        Approx.assertApprox(25.0, Pose.trueYawDegrees(0, 0, 25, null), 1e-9);
+        Approx.assertApprox(-15.0, Pose.trueYawDegrees(0, 0, -15, null), 1e-9);
+        Approx.assertApprox(25.42, Pose.trueYawDegrees(8, -3, 25, null), 0.01);
+    }
+
+    @Test
+    void mainWithOnlyWritesTheNamedScenarios(@TempDir Path out) throws IOException {
+        Generator.main(new String[] {"--out", out.toString(), "--only", "nod_axis_calibration_no_nod"});
+        try (Stream<Path> files = Files.list(out)) {
+            assertEquals(List.of("nod_axis_calibration_no_nod.json"),
+                    files.map(p -> p.getFileName().toString()).toList());
+        }
+    }
+
     @Test
     void differentSeedsGiveDifferentSamples() {
         JsonNode a = Generator.synthesize(Generator.steadyNeutral(1)).fixture().get("samples");

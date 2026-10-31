@@ -58,6 +58,7 @@ public final class ScenarioSpec {
     private double headTurnInterval = 15.0;
     private double mountPitch = 8.0;
     private double mountRoll = -3.0;
+    private double mountYaw = 0.0;  // D-017: earbud yaw in the ear, about the head's up axis
     private double timestampJitter = 0.004;  // std of delivery-time jitter, seconds
     private Function<ScenarioSpec, ObjectNode> expected = spec -> Json.object();
 
@@ -92,6 +93,7 @@ public final class ScenarioSpec {
     public double headTurnInterval() { return headTurnInterval; }
     public double mountPitch() { return mountPitch; }
     public double mountRoll() { return mountRoll; }
+    public double mountYaw() { return mountYaw; }
     public double timestampJitter() { return timestampJitter; }
     public Function<ScenarioSpec, ObjectNode> expected() { return expected; }
 
@@ -111,6 +113,7 @@ public final class ScenarioSpec {
     public ScenarioSpec headTurnInterval(double v) { headTurnInterval = v; return this; }
     public ScenarioSpec mountPitch(double v) { mountPitch = v; return this; }
     public ScenarioSpec mountRoll(double v) { mountRoll = v; return this; }
+    public ScenarioSpec mountYaw(double v) { mountYaw = v; return this; }
     public ScenarioSpec timestampJitter(double v) { timestampJitter = v; return this; }
     public ScenarioSpec expected(Function<ScenarioSpec, ObjectNode> v) { expected = v; return this; }
 }

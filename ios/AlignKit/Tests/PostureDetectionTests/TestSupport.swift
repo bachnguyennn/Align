@@ -15,15 +15,48 @@ enum Pose {
         heading: Double = 0,
         mountPitch: Double = 0,
         mountRoll: Double = 0,
+        mountYaw: Double = 0,
         axes: HeadAxisConvention = .airPodsDefault
     ) -> Quaternion {
         let rv = axes.forwardAxis * (forward * rad) + axes.lateralAxis * (lateral * rad)
         let tilt = rv.length == 0 ? Quaternion.identity : Quaternion(axis: rv, angleRadians: rv.length)
         let yaw = Quaternion(axis: Vector3(x: 0, y: 0, z: 1), angleRadians: heading * rad)
-        let pitch = Quaternion(axis: axes.forwardAxis, angleRadians: mountPitch * rad)
-        let roll = Quaternion(axis: axes.lateralAxis, angleRadians: mountRoll * rad)
-        let mount = pitch * roll
+        let mount = mountAttitude(pitch: mountPitch, roll: mountRoll, yaw: mountYaw, axes: axes)
         return ((yaw * tilt) * mount).normalized
+    }
+
+    /// Head-to-device mount rotation: Yaw(about the head's up axis, lateral × forward) * Pitch * Roll
+    /// (D-017; same as `Pose.mountAttitude` in the Java reference).
+    static func mountAttitude(pitch: Double, roll: Double, yaw: Double, axes: HeadAxisConvention = .airPodsDefault) -> Quaternion {
+        let p = Quaternion(axis: axes.forwardAxis, angleRadians: pitch * rad)
+        let r = Quaternion(axis: axes.lateralAxis, angleRadians: roll * rad)
+        var mount = p * r
+        if yaw != 0 {
+            let headUp = axes.lateralAxis.cross(axes.forwardAxis)
+            mount = Quaternion(axis: headUp, angleRadians: yaw * rad) * mount
+        }
+        return mount
+    }
+
+    /// The true head axes seen in the device frame for a mount, projected onto the neutral
+    /// baseline plane (what a perfect guided nod learns).
+    static func trueDeviceAxes(pitch: Double, roll: Double, yaw: Double, axes: HeadAxisConvention = .airPodsDefault) -> HeadAxisConvention {
+        let inverse = mountAttitude(pitch: pitch, roll: roll, yaw: yaw, axes: axes).conjugate
+        let g0 = gravity(attitude(forward: 0, lateral: 0, mountPitch: pitch, mountRoll: roll, mountYaw: yaw, axes: axes))
+        return HeadAxisConvention(
+            forwardAxis: TiltEstimator.baselinePlaneAxis(inverse.rotate(axes.forwardAxis), baseline: g0),
+            lateralAxis: TiltEstimator.baselinePlaneAxis(inverse.rotate(axes.lateralAxis), baseline: g0)
+        )
+    }
+
+    /// Signed yaw (degrees) of `trueDeviceAxes`' forward axis from `axes` (see `AxisCalibrationService`).
+    static func trueYawDegrees(pitch: Double, roll: Double, yaw: Double, axes: HeadAxisConvention = .airPodsDefault) -> Double {
+        let g0 = gravity(attitude(forward: 0, lateral: 0, mountPitch: pitch, mountRoll: roll, mountYaw: yaw, axes: axes))
+        return AxisCalibrationService.signedYawDegrees(
+            forwardAxis: trueDeviceAxes(pitch: pitch, roll: roll, yaw: yaw, axes: axes).forwardAxis,
+            baselineGravity: g0,
+            reference: axes
+        )
     }
 
     static func gravity(_ q: Quaternion) -> Vector3 {
@@ -43,6 +76,27 @@ enum Pose {
     ) -> MotionSample {
         let q = attitude(forward: forward, lateral: lateral, heading: heading)
         return MotionSample(timestamp: t, attitude: q, gravity: includeGravity ? gravity(q) : nil)
+    }
+
+    /// A sample seen through an earbud mounted with pitch/roll/yaw (degrees).
+    static func mountedSample(
+        _ t: TimeInterval,
+        forward: Double,
+        lateral: Double,
+        heading: Double,
+        mountPitch: Double,
+        mountRoll: Double,
+        mountYaw: Double
+    ) -> MotionSample {
+        let q = attitude(
+            forward: forward,
+            lateral: lateral,
+            heading: heading,
+            mountPitch: mountPitch,
+            mountRoll: mountRoll,
+            mountYaw: mountYaw
+        )
+        return MotionSample(timestamp: t, attitude: q, gravity: gravity(q))
     }
 }
 
@@ -136,6 +190,32 @@ extension CalibrationOutcome {
     var failure: CalibrationFailure? {
         if case let .failed(failure) = self {
             return failure
+        }
+        return nil
+    }
+}
+
+extension AxisCalibrationOutcome {
+    /// "succeeded" or the failure raw value, as in fixture JSON.
+    var name: String {
+        switch self {
+        case .succeeded:
+            return "succeeded"
+        case let .failed(failure):
+            return failure.rawValue
+        }
+    }
+
+    var failure: AxisCalibrationFailure? {
+        if case let .failed(failure) = self {
+            return failure
+        }
+        return nil
+    }
+
+    var axes: HeadAxisConvention? {
+        if case let .succeeded(axes) = self {
+            return axes
         }
         return nil
     }

@@ -99,8 +99,8 @@ All synthetic data comes from the Java generator (`Generator.java`, SplittableRa
 | 0.5 | 20/20 |
 | 1.0 | 20/20 |
 | 1.5 | 20/20 |
-| 2.0 | 19/20 |
-| 3.0 | 8/20 |
+| 2.0 | 20/20 |
+| 3.0 | 15/20 |
 
 ## Axis projection with earbud mounting offset (noise-free, 20° poses)
 
@@ -122,8 +122,71 @@ All synthetic data comes from the Java generator (`Generator.java`, SplittableRa
 | 10 Hz | 10/10 | 10/10 | 0.53 (min 0.31, max 0.64) |
 | 5 Hz | 10/10 | 10/10 | 0.63 (min 0.60, max 0.64) |
 
+## D-017 (i): earbud yaw crosstalk, default vs learned axes (40 s holds; 10 seeds; reading = mean of per-run medians)
+
+| earbud yaw (°) | axes | nod accepted | 20° forward hold: forward read (°) | → lateral crosstalk (°) | 20° right hold: lateral read (°) | → forward crosstalk (°) | 16° forward hold: 1 forward reminder | 16° right hold: 1 right reminder |
+|---|---|---|---|---|---|---|---|---|
+| 0 | default | - | 19.95 | 0.19 | 20.01 | 0.36 | 10/10 | 10/10 |
+| 0 | learned (nod) | 10/10 | 19.95 | 0.40 | 20.01 | 0.36 | 10/10 | 10/10 |
+| 10 | default | - | 19.63 | 3.39 | 19.67 | 3.81 | 10/10 | 10/10 |
+| 10 | learned (nod) | 10/10 | 19.95 | 0.40 | 20.01 | 0.36 | 10/10 | 10/10 |
+| 20 | default | - | 18.71 | 6.76 | 18.74 | 7.17 | 10/10 | 10/10 |
+| 20 | learned (nod) | 10/10 | 19.95 | 0.40 | 20.01 | 0.36 | 10/10 | 10/10 |
+| 30 | default | - | 17.23 | 9.93 | 17.24 | 10.31 | 2/10 | 1/10 |
+| 30 | learned (nod) | 10/10 | 19.95 | 0.40 | 20.01 | 0.36 | 10/10 | 10/10 |
+| 40 | default | - | 15.22 | 12.79 | 15.22 | 13.14 | 0/10 | 0/10 |
+| 40 | learned (nod) | 10/10 | 19.95 | 0.40 | 20.01 | 0.36 | 10/10 | 10/10 |
+
+## D-017 (ii): guided-nod success vs sway and nod amplitude (earbud yaw 20°)
+
+| sway std (°) | 8° nod: accepted / neutral ok | 12° nod: accepted / neutral ok | 20° nod: accepted / neutral ok | 30° nod: accepted / neutral ok |
+|---|---|---|---|---|
+| 0.5 | 0/20 | 1/20 (yaw err 0.5°, max 0.5°) | 20/20 (yaw err 1.0°, max 3.0°) | 20/20 (yaw err 0.7°, max 2.0°) |
+| 1.0 | 0/20 | 3/20 (yaw err 2.6°, max 5.7°) | 20/20 (yaw err 2.0°, max 5.9°) | 20/20 (yaw err 1.3°, max 4.0°) |
+| 2.0 | 1/20 (yaw err 2.2°, max 2.2°) | 7/20 (yaw err 8.8°, max 18.6°) | 20/20 (yaw err 4.0°, max 11.9°) | 20/20 (yaw err 2.7°, max 8.1°) |
+| 3.0 | 2/16 (yaw err 3.2°, max 3.7°) | 6/16 (yaw err 13.3°, max 28.4°) | 15/16 (yaw err 6.2°, max 18.5°) | 16/16 (yaw err 4.3°, max 12.5°) |
+
+## D-017 (ii-b): axis line fit methods (20° nods, earbud yaw 20°)
+
+| sway std (°) | principal axis (default) | sign-aligned sum | centred principal axis |
+|---|---|---|---|
+| 0.5 | 20/20, yaw err 1.00° (max 2.94°) | 20/20, yaw err 1.11° (max 3.07°) | 20/20, yaw err 0.86° (max 2.32°) |
+| 2.0 | 20/20, yaw err 3.96° (max 12.59°) | 20/20, yaw err 4.74° (max 13.24°) | 20/20, yaw err 3.61° (max 12.60°) |
+| 3.0 | 19/20, yaw err 6.02° (max 19.88°) | 18/20, yaw err 7.09° (max 21.19°) | 14/20, yaw err 4.60° (max 9.70°) |
+
+## D-017 (iii): false acceptance during the axis calibration
+
+| motion during axis calibration (earbud yaw 0) | accepted | inconsistentMotion | noNodDetected | mean |learned yaw| if accepted (°) |
+|---|---|---|---|---|
+| 20° nod (reference) | 20/20 | 0/20 | 0/20 | 1.0 |
+| diagonal 20° tilt, 30° from forward | 20/20 | 0/20 | 0/20 | 30.2 |
+| diagonal 20° tilt, 45° from forward | 7/20 | 13/20 | 0/20 | 43.9 |
+| diagonal 20° tilt, 60° from forward | 0/20 | 20/20 | 0/20 | - |
+| ear to shoulder 20° (sideways) | 0/20 | 20/20 | 0/20 | - |
+| circular head roll (forward then sideways) | 0/20 | 20/20 | 0/20 | - |
+| head turns only (every ~2 s, up to 45°) | 0/20 | 0/20 | 20/20 | - |
+| head turns + 8° nod | 0/20 | 0/20 | 20/20 | - |
+| keeps still | 0/20 | 0/20 | 20/20 | - |
+
+## D-017 (iv): neutral calibration spread quantile (cells: runs with the wanted outcome; in brackets the mean baseline error of the accepted runs)
+
+| 10 s neutral calibration | want | quantile 1.00 | quantile 0.95 | quantile 0.90 (default) | quantile 0.80 |
+|---|---|---|---|---|---|
+| still, sway 0.5° | accepted | 20/20 (0.32°) | 20/20 (0.32°) | 20/20 (0.32°) | 20/20 (0.32°) |
+| still, sway 1.0° | accepted | 20/20 (0.64°) | 20/20 (0.64°) | 20/20 (0.64°) | 20/20 (0.64°) |
+| still, sway 2.0° | accepted | 19/20 (1.21°) | 19/20 (1.21°) | 20/20 (1.26°) | 20/20 (1.26°) |
+| still, sway 3.0° | accepted | 10/20 (1.59°) | 11/20 (1.55°) | 15/20 (1.78°) | 18/20 (1.89°) |
+| still, sway 4.0° | accepted | 3/20 (1.28°) | 5/20 (1.25°) | 7/20 (1.96°) | 11/20 (2.65°) |
+| one 1 s fidget to 10° | accepted | 0/20 | 19/20 (0.53°) | 20/20 (0.52°) | 20/20 (0.52°) |
+| one 1 s fidget to 20° | accepted | 0/20 | 0/20 | 20/20 (0.50°) | 20/20 (0.50°) |
+| moving: nodding ±9° / ±4° (fixture motion) | rejected | 20/20 | 20/20 | 20/20 | 20/20 |
+| moving: nodding ±6° at 0.3 Hz | rejected | 5/20 (0.34°) | 2/20 (0.32°) | 1/20 (0.32°) | 0/20 (0.36°) |
+| moving: looking around ±6° sideways | rejected | 20/20 | 20/20 | 18/20 (0.76°) | 7/20 (0.55°) |
+| moving: slow slouch 0→10° during calibration | rejected | 16/20 (4.67°) | 14/20 (4.50°) | 9/20 (4.35°) | 3/20 (4.32°) |
+| moving: two 1.5 s fidgets to 12° | rejected | 20/20 | 20/20 | 20/20 | 20/20 |
+
 ## Throughput
 
 Java reference: 2551 samples in 1 ms (0.3 µs/sample, HotSpot JVM after the runs above, informational only).
 
-Total runtime: 14 s.
+Total runtime: 21 s.

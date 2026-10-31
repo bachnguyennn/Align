@@ -11,8 +11,15 @@ import AlignCore
 ///    `interrupt(at: previousTimestamp)`; this sample is then processed from a fresh state.
 /// 3. Decimation by `maxProcessingRateHz` (phase-accumulating schedule, so 25 Hz capped at 10 Hz
 ///    gives 10 Hz on average). Dropped samples give a passive update.
-/// 4. `MotionFilter` → `CalibrationService` (while calibrating) or `TiltEstimator` +
-///    `PostureDetector` → `ReminderDecisionEngine` on the update where a tilt becomes sustained.
+/// 4. `MotionFilter` → `CalibrationService` (neutral calibration), `AxisCalibrationService`
+///    (guided nod, D-017), or `TiltEstimator` with `effectiveAxes` + `PostureDetector` →
+///    `ReminderDecisionEngine` on every sustained update until the episode has reminded.
+///
+/// Axis calibration: while active the state is `.calibrating(elapsed / axisCalibrationDuration)`
+/// and the detector, reminders and episodes are paused, as during neutral calibration. Exactly one
+/// update carries `axisCalibrationOutcome`. `beginAxisCalibration()` and `beginCalibration()`
+/// cancel each other's attempt without an outcome; without a baseline, `beginAxisCalibration()`
+/// reports `.needsBaseline` on the next update (of any kind).
 ///
 /// Not thread-safe; call from one actor.
 public final class PostureMonitor {
@@ -24,6 +31,7 @@ public final class PostureMonitor {
 
     private var filter = MotionFilter()
     private var calibration = CalibrationService()
+    private var axisCalibration = AxisCalibrationService()
     private var detector = PostureDetector()
     private var reminders = ReminderDecisionEngine()
     private var lastReceivedTimestamp: TimeInterval?
@@ -31,6 +39,7 @@ public final class PostureMonitor {
     private var hasData = false
     private var lastTilt: TiltEstimate?
     private var pendingEpisode: PostureEpisode?
+    private var pendingAxisOutcome: AxisCalibrationOutcome?
 
     public init(configuration: PostureConfiguration = .default, baseline: NeutralBaseline? = nil) {
         self.configuration = configuration
@@ -39,11 +48,19 @@ public final class PostureMonitor {
 
     // MARK: - Public API
 
-    /// `.calibrating` while calibrating; `.unavailable` before the first sample and after an
-    /// interrupt; `.needsCalibration` without a baseline; otherwise the detector state.
+    /// Axes in use: `baseline?.learnedAxes ?? configuration.axes`.
+    public var effectiveAxes: HeadAxisConvention {
+        baseline?.learnedAxes ?? configuration.axes
+    }
+
+    /// `.calibrating` during a neutral or axis calibration; `.unavailable` before the first sample
+    /// and after an interrupt; `.needsCalibration` without a baseline; otherwise the detector state.
     public var state: PostureState {
         if calibration.isActive {
             return .calibrating(progress: calibration.progress(duration: configuration.calibrationDuration))
+        }
+        if axisCalibration.isActive {
+            return .calibrating(progress: axisCalibration.progress(duration: configuration.axisCalibrationDuration))
         }
         if !hasData {
             return .unavailable
@@ -54,17 +71,12 @@ public final class PostureMonitor {
         return detector.state
     }
 
-    /// Starts collecting a new baseline from subsequent samples. An open sustained episode is
-    /// closed at the last processed timestamp and delivered with the next update.
+    /// Starts collecting a new baseline from subsequent samples. Cancels an axis calibration in
+    /// progress (no outcome). An open sustained episode is closed at the last processed timestamp
+    /// and delivered with the next update.
     public func beginCalibration() {
-        if detector.phase != .neutral {
-            let end = lastProcessedTimestamp ?? 0
-            let episode = detector.interrupt(at: end)
-            if pendingEpisode == nil {
-                pendingEpisode = episode
-            }
-        }
-        detector.reset()
+        closeOpenEpisode()
+        axisCalibration.cancel()
         calibration.begin()
     }
 
@@ -74,23 +86,53 @@ public final class PostureMonitor {
         detector.reset()
     }
 
+    /// Starts waiting for one nod (D-017). Cancels a neutral calibration in progress (no outcome).
+    /// Without a baseline, the next update reports `.failed(.needsBaseline)`. An open sustained
+    /// episode is closed at the last processed timestamp and delivered with the next update.
+    public func beginAxisCalibration() {
+        calibration.cancel()
+        closeOpenEpisode()
+        if baseline == nil {
+            axisCalibration.cancel()
+            pendingAxisOutcome = .failed(.needsBaseline)
+            return
+        }
+        axisCalibration.begin()
+    }
+
+    /// Stops an axis calibration in progress without an outcome; the baseline is unchanged.
+    public func cancelAxisCalibration() {
+        axisCalibration.cancel()
+        detector.reset()
+    }
+
+    /// Removes learned axes from the baseline (back to `configuration.axes`); the version is kept.
+    public func clearLearnedAxes() {
+        if var b = baseline, b.learnedAxes != nil {
+            b.learnedAxes = nil
+            baseline = b
+        }
+    }
+
     /// Clears reminder cooldown (e.g. new session).
     public func resetCooldown() {
         reminders.reset()
     }
 
     /// Call on disconnect/pause. Closes any open episode (returned in `completedEpisode`), fails an
-    /// in-progress calibration with `.sensorInterrupted`, and resets filter and timers. The
-    /// reminder cooldown is kept.
+    /// in-progress neutral or axis calibration with `.sensorInterrupted`, and resets filter and
+    /// timers. The reminder cooldown is kept.
     public func interrupt(at timestamp: TimeInterval) -> PostureUpdate {
         let result = interruptCore(at: timestamp)
+        let pendingAxis = takePendingAxisOutcome()
         return PostureUpdate(
             timestamp: timestamp,
             tilt: nil,
             state: state,
             reminder: nil,
             completedEpisode: result.episode,
-            calibrationOutcome: result.outcome
+            calibrationOutcome: result.outcome,
+            axisCalibrationOutcome: result.axisOutcome ?? pendingAxis
         )
     }
 
@@ -100,23 +142,25 @@ public final class PostureMonitor {
         let raw = sample.gravity ?? TiltEstimator.gravity(fromAttitude: sample.attitude)
         let gravity = raw.normalized
         if gravity.length == 0 {
-            return passiveUpdate(t, episode: nil, outcome: nil)
+            return passiveUpdate(t, episode: nil, outcome: nil, axisOutcome: nil)
         }
         if let last = lastReceivedTimestamp, t <= last {
-            return passiveUpdate(t, episode: nil, outcome: nil)
+            return passiveUpdate(t, episode: nil, outcome: nil, axisOutcome: nil)
         }
 
         var gapEpisode: PostureEpisode?
         var gapOutcome: CalibrationOutcome?
+        var gapAxisOutcome: AxisCalibrationOutcome?
         if let last = lastReceivedTimestamp, t - last > configuration.maxSampleGap {
             let result = interruptCore(at: last)
             gapEpisode = result.episode
             gapOutcome = result.outcome
+            gapAxisOutcome = result.axisOutcome
         }
         lastReceivedTimestamp = t
 
         if !shouldProcess(t) {
-            return passiveUpdate(t, episode: gapEpisode, outcome: gapOutcome)
+            return passiveUpdate(t, episode: gapEpisode, outcome: gapOutcome, axisOutcome: gapAxisOutcome)
         }
 
         let config = configuration
@@ -126,6 +170,7 @@ public final class PostureMonitor {
 
         var episode = takePendingEpisode() ?? gapEpisode
         var outcome = gapOutcome
+        var axisOutcome = takePendingAxisOutcome() ?? gapAxisOutcome
         var reminder: ReminderDecision?
         var tilt: TiltEstimate?
 
@@ -147,6 +192,30 @@ public final class PostureMonitor {
                 detector.reset()
             case let .failed(failure, _):
                 outcome = .failed(failure)
+                detector.reset()
+            }
+            if let b = baseline {
+                tilt = estimate(t, smoothed, b)
+            }
+        } else if axisCalibration.isActive, let current = baseline {
+            let step = axisCalibration.add(
+                gravity: smoothed,
+                timestamp: t,
+                baselineGravity: current.gravity,
+                configuration: config
+            )
+            switch step {
+            case .inProgress:
+                break
+            case let .succeeded(axes):
+                var updated = current
+                updated.learnedAxes = axes
+                updated.version = current.version + 1
+                baseline = updated
+                axisOutcome = .succeeded(axes)
+                detector.reset()
+            case let .failed(failure):
+                axisOutcome = .failed(failure)
                 detector.reset()
             }
             if let b = baseline {
@@ -184,7 +253,8 @@ public final class PostureMonitor {
             state: state,
             reminder: reminder,
             completedEpisode: episode,
-            calibrationOutcome: outcome
+            calibrationOutcome: outcome,
+            axisCalibrationOutcome: axisOutcome
         )
     }
 
@@ -195,8 +265,27 @@ public final class PostureMonitor {
         Date(timeIntervalSinceNow: timestamp - ProcessInfo.processInfo.systemUptime)
     }
 
+    /// Tilt relative to `b`, measured with `b.learnedAxes ?? configuration.axes` (= `effectiveAxes`
+    /// for the monitor's own baseline).
     private func estimate(_ t: TimeInterval, _ smoothed: Vector3, _ b: NeutralBaseline) -> TiltEstimate {
-        TiltEstimator.estimate(timestamp: t, gravity: smoothed, baseline: b.gravity, axes: configuration.axes)
+        TiltEstimator.estimate(
+            timestamp: t,
+            gravity: smoothed,
+            baseline: b.gravity,
+            axes: b.learnedAxes ?? configuration.axes
+        )
+    }
+
+    /// Closes an open sustained episode at the last processed timestamp (delivered with the next update).
+    private func closeOpenEpisode() {
+        if detector.phase != .neutral {
+            let end = lastProcessedTimestamp ?? 0
+            let episode = detector.interrupt(at: end)
+            if pendingEpisode == nil {
+                pendingEpisode = episode
+            }
+        }
+        detector.reset()
     }
 
     private func takePendingEpisode() -> PostureEpisode? {
@@ -205,7 +294,17 @@ public final class PostureMonitor {
         return episode
     }
 
-    private func interruptCore(at timestamp: TimeInterval) -> (episode: PostureEpisode?, outcome: CalibrationOutcome?) {
+    private func takePendingAxisOutcome() -> AxisCalibrationOutcome? {
+        let outcome = pendingAxisOutcome
+        pendingAxisOutcome = nil
+        return outcome
+    }
+
+    private func interruptCore(at timestamp: TimeInterval) -> (
+        episode: PostureEpisode?,
+        outcome: CalibrationOutcome?,
+        axisOutcome: AxisCalibrationOutcome?
+    ) {
         let pending = takePendingEpisode()
         let detectorEpisode = detector.interrupt(at: timestamp)
         let episode = pending ?? detectorEpisode
@@ -214,13 +313,18 @@ public final class PostureMonitor {
             calibration.cancel()
             outcome = .failed(.sensorInterrupted)
         }
+        var axisOutcome: AxisCalibrationOutcome?
+        if axisCalibration.isActive {
+            axisCalibration.cancel()
+            axisOutcome = .failed(.sensorInterrupted)
+        }
         filter.reset()
         hasData = false
         lastReceivedTimestamp = nil
         lastProcessedTimestamp = nil
         nextProcessingDue = nil
         lastTilt = nil
-        return (episode: episode, outcome: outcome)
+        return (episode: episode, outcome: outcome, axisOutcome: axisOutcome)
     }
 
     private func shouldProcess(_ t: TimeInterval) -> Bool {
@@ -244,15 +348,22 @@ public final class PostureMonitor {
         return true
     }
 
-    private func passiveUpdate(_ t: TimeInterval, episode: PostureEpisode?, outcome: CalibrationOutcome?) -> PostureUpdate {
+    private func passiveUpdate(
+        _ t: TimeInterval,
+        episode: PostureEpisode?,
+        outcome: CalibrationOutcome?,
+        axisOutcome: AxisCalibrationOutcome?
+    ) -> PostureUpdate {
         let pending = takePendingEpisode()
+        let pendingAxis = takePendingAxisOutcome()
         return PostureUpdate(
             timestamp: t,
             tilt: lastTilt,
             state: state,
             reminder: nil,
             completedEpisode: episode ?? pending,
-            calibrationOutcome: outcome
+            calibrationOutcome: outcome,
+            axisCalibrationOutcome: axisOutcome ?? pendingAxis
         )
     }
 }

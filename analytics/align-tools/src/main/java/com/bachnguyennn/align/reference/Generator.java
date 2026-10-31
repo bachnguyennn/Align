@@ -43,8 +43,8 @@ import java.util.function.Supplier;
  *       (the user is asked to hold still).</li>
  *   <li>Heading: slow random walk plus occasional head turns of 15-45 deg (heading must not
  *       matter).</li>
- *   <li>Earbud mounting offset ({@code mountPitch}, {@code mountRoll}) between head frame and
- *       device frame.</li>
+ *   <li>Earbud mounting offset ({@code mountPitch}, {@code mountRoll}, and {@code mountYaw} about
+ *       the head's up axis, default 0, D-017) between head frame and device frame.</li>
  *   <li>Sensor noise: white rotation noise of {@code sensorNoiseDeg} per axis on the gravity
  *       vector.</li>
  * </ul>
@@ -54,8 +54,8 @@ import java.util.function.Supplier;
  * hard-coded: they come from the fixture's configuration ({@code forwardAxis}/{@code lateralAxis},
  * written explicitly into every fixture and equal to the AlignCore default (-1,0,0)/(0,1,0)).
  * Device attitude q = Yaw(heading) * Tilt(forward*forwardAxis + lateral*lateralAxis) * Mount
- * (pitch about forwardAxis, roll about lateralAxis); gravity in the device frame = q* (0,0,-1) q
- * (see {@link Pose}).
+ * (mount yaw about the head's up axis, then pitch about forwardAxis, roll about lateralAxis);
+ * gravity in the device frame = q* (0,0,-1) q (see {@link Pose}).
  *
  * <p>Randomness: this is a port of the Python generator's model, not of numpy's random streams,
  * so for the same seed it produces different samples than the Python version (the committed
@@ -309,7 +309,7 @@ public final class Generator {
             Angles truth = truthPose(spec, rel);
             double f = truth.forward() + swayF[i] + microF[i];
             double l = truth.lateral() + swayL[i] + microL[i];
-            Quat q = Pose.poseAttitude(f, l, heading[i], spec.mountPitch(), spec.mountRoll(), axes);
+            Quat q = Pose.poseAttitude(f, l, heading[i], spec.mountPitch(), spec.mountRoll(), spec.mountYaw(), axes);
             Vec3 g = gravityInHeadFrame(q);
             g = normalized(quatRotate(quatFromRotationVector(noise[i]), g));
             if (q.w() < 0) {
@@ -366,6 +366,9 @@ public final class Generator {
         ObjectNode mount = truth.putObject("mountDegrees");
         mount.put("pitch", spec.mountPitch());
         mount.put("roll", spec.mountRoll());
+        if (spec.mountYaw() != 0.0) {
+            mount.put("yaw", spec.mountYaw());
+        }
         truth.put("swayDegrees", spec.swayDeg());
         fixture.set("expected", spec.expected().apply(spec));
         fixture.set("samples", samples);
@@ -624,8 +627,155 @@ public final class Generator {
                         List.of(episode(s, TiltDirection.BACKWARD, 11, true)), "neutral"));
     }
 
+    // MARK: - D-017 scenarios (guided-nod axis calibration, quantile spread rule)
+
+    /** When the D-017 scenarios call {@code beginAxisCalibration} (relative seconds). */
+    public static final double AXIS_CALIBRATION_AT = 11.0;
+    /** When their nod starts. */
+    public static final double NOD_AT = 12.0;
+
+    /** A guided nod: 1 s ease to the pose, 0.6 s hold, 1 s ease back (2.6 s in total). */
+    public static Glance nod(double start, double forward, double lateral) {
+        return new Glance(start, 2.6, forward, lateral, 1.0);
+    }
+
+    /** Neutral calibration at 0, axis calibration at {@code axisAt}. */
+    public static List<Action> calibrateThenAxisCalibration(double axisAt) {
+        return new ArrayList<>(List.of(new Action(0.0, "beginCalibration"), new Action(axisAt, "beginAxisCalibration")));
+    }
+
+    /**
+     * Adds the D-017 expected fields: {@code axisCalibrationOutcomes} and {@code learnedAxes}
+     * ({@code present}, and when present {@code yawDegrees} ± {@code toleranceDegrees}).
+     */
+    static ObjectNode withAxisExpectations(ObjectNode expected, List<String> axisOutcomes, Double learnedYaw,
+                                           double toleranceDegrees) {
+        ArrayNode outcomes = expected.putArray("axisCalibrationOutcomes");
+        axisOutcomes.forEach(outcomes::add);
+        ObjectNode learned = expected.putObject("learnedAxes");
+        learned.put("present", learnedYaw != null);
+        if (learnedYaw != null) {
+            learned.put("yawDegrees", learnedYaw);
+            learned.put("toleranceDegrees", toleranceDegrees);
+        }
+        return expected;
+    }
+
+    /** Adds {@code maxAbsLateral}: |tilt.lateralDegrees| ≤ degrees for every update with from ≤ t ≤ to. */
+    static ObjectNode withLateralBound(ObjectNode expected, double from, double to, double degrees) {
+        ObjectNode bound = expected.putObject("maxAbsLateral");
+        bound.put("from", from);
+        bound.put("to", to);
+        bound.put("degrees", degrees);
+        return expected;
+    }
+
+    /**
+     * The yaw a perfect nod learns for the scenario's mount (2 decimals). It differs from
+     * {@code mountYaw} by a few tenths of a degree when the earbud is also pitched and rolled,
+     * because the yaw is measured between axes projected onto the baseline plane.
+     */
+    static double trueYaw(ScenarioSpec s) {
+        return PythonFormat.round(Pose.trueYawDegrees(s.mountPitch(), s.mountRoll(), s.mountYaw(), cfg(s).axes()), 2);
+    }
+
+    public static ScenarioSpec nodAxisCalibrationYawedEarbud() {
+        return nodAxisCalibrationYawedEarbud(109);
+    }
+
+    public static ScenarioSpec nodAxisCalibrationYawedEarbud(long seed) {
+        return new ScenarioSpec("nod_axis_calibration_yawed_earbud",
+                "Earbud yawed 25 deg in the ear (mountYaw). Calibrate, beginAxisCalibration at 11 s, nod "
+                        + "down to 25 deg and back (12-14.6 s), then 20 deg forward from 20-23 s held to 68 s. "
+                        + "Expect the nod to be learned (yaw ~25 deg), one forward reminder, and |lateral| below "
+                        + "3 deg during the hold (default axes would read ~8.5 deg lateral, 18.1 deg forward).",
+                seed, 76.0)
+                .mountYaw(25.0)
+                .actions(calibrateThenAxisCalibration(AXIS_CALIBRATION_AT))
+                .calmWindows(List.of(new Interval(0.0, 20.0)))
+                .glances(List.of(nod(NOD_AT, 25.0, 0.0)))
+                .keyframes(keyframes(new double[][] {{0, 0, 0}, {20, 0, 0}, {23, 20, 0}, {68, 20, 0}, {71, 0, 0}}))
+                .expected(s -> withLateralBound(
+                        withAxisExpectations(
+                                expected(List.of("succeeded"), List.of(episode(s, TiltDirection.FORWARD, 16, true)),
+                                        "neutral"),
+                                List.of("succeeded"), trueYaw(s), 3.0),
+                        s.absT(25.0), s.absT(66.0), 3.0));
+    }
+
+    public static ScenarioSpec nodAxisCalibrationUp() {
+        return nodAxisCalibrationUp(110);
+    }
+
+    public static ScenarioSpec nodAxisCalibrationUp(long seed) {
+        return new ScenarioSpec("nod_axis_calibration_up",
+                "Earbud yawed -15 deg. Calibrate, beginAxisCalibration at 11 s, nod UP to -20 deg and back "
+                        + "(12-14.6 s). Expect the axis to be learned with yaw ~-15 deg and the sign of the "
+                        + "default convention (looking up stays backward); no reminders.",
+                seed, 24.0)
+                .mountYaw(-15.0)
+                .actions(calibrateThenAxisCalibration(AXIS_CALIBRATION_AT))
+                .calmWindows(List.of(new Interval(0.0, 20.0)))
+                .glances(List.of(nod(NOD_AT, -20.0, 0.0)))
+                .expected(s -> withAxisExpectations(expected(List.of("succeeded"), List.of(), "neutral"),
+                        List.of("succeeded"), trueYaw(s), 3.0));
+    }
+
+    public static ScenarioSpec nodAxisCalibrationSidewaysRejected() {
+        return nodAxisCalibrationSidewaysRejected(111);
+    }
+
+    public static ScenarioSpec nodAxisCalibrationSidewaysRejected(long seed) {
+        return new ScenarioSpec("nod_axis_calibration_sideways_rejected",
+                "Calibrate, beginAxisCalibration at 11 s, but the user tilts the right ear to the shoulder "
+                        + "(20 deg and back, 12-14.6 s) instead of nodding. Expect inconsistentMotion and the "
+                        + "default axes kept.",
+                seed, 22.0)
+                .actions(calibrateThenAxisCalibration(AXIS_CALIBRATION_AT))
+                .calmWindows(List.of(new Interval(0.0, 20.0)))
+                .glances(List.of(nod(NOD_AT, 0.0, 20.0)))
+                .expected(s -> withAxisExpectations(expected(List.of("succeeded"), List.of(), "neutral"),
+                        List.of("inconsistentMotion"), null, 0.0));
+    }
+
+    public static ScenarioSpec nodAxisCalibrationNoNod() {
+        return nodAxisCalibrationNoNod(112);
+    }
+
+    public static ScenarioSpec nodAxisCalibrationNoNod(long seed) {
+        return new ScenarioSpec("nod_axis_calibration_no_nod",
+                "Calibrate, beginAxisCalibration at 11 s, then the user keeps still (sway and head turns "
+                        + "only). Expect noNodDetected after axisCalibrationDuration (8 s) and the default axes "
+                        + "kept.",
+                seed, 23.0)
+                .actions(calibrateThenAxisCalibration(AXIS_CALIBRATION_AT))
+                .calmWindows(List.of(new Interval(0.0, 20.0)))
+                .expected(s -> withAxisExpectations(expected(List.of("succeeded"), List.of(), "neutral"),
+                        List.of("noNodDetected"), null, 0.0));
+    }
+
+    public static ScenarioSpec calibrationBriefFidget() {
+        return calibrationBriefFidget(113);
+    }
+
+    public static ScenarioSpec calibrationBriefFidget(long seed) {
+        return new ScenarioSpec("calibration_brief_fidget",
+                "One brief fidget (10 deg forward for ~1 s, at 4 s) during the 10 s neutral calibration. "
+                        + "The v1 every-sample rule fails it; the D-017 quantile rule (0.9) accepts it and the "
+                        + "inlier mean keeps the baseline unbiased. Expect succeeded, no reminders.",
+                seed, 16.0)
+                .actions(new ArrayList<>(CALIBRATE_AT_START))
+                .glances(List.of(new Glance(4.0, 1.0, 10.0, 0.0, 0.35)))
+                .expected(s -> expected(List.of("succeeded"), List.of(), "neutral"));
+    }
+
     /** Every scenario with its default seed, in file-writing order. */
     public static final Map<String, Supplier<ScenarioSpec>> SCENARIOS = scenarios();
+
+    /** The fixtures written by the original Python generator (their samples are never regenerated). */
+    public static final List<String> PYTHON_SCENARIOS = List.of("steady_neutral", "gradual_forward_slouch",
+            "brief_glances_down", "lateral_right_tilt", "cooldown_retrigger", "calibration_too_much_movement",
+            "disconnect_mid_tilt", "looking_up_backward");
 
     private static Map<String, Supplier<ScenarioSpec>> scenarios() {
         Map<String, Supplier<ScenarioSpec>> m = new LinkedHashMap<>();
@@ -637,6 +787,11 @@ public final class Generator {
         m.put("calibration_too_much_movement", Generator::calibrationTooMuchMovement);
         m.put("disconnect_mid_tilt", Generator::disconnectMidTilt);
         m.put("looking_up_backward", Generator::lookingUpBackward);
+        m.put("nod_axis_calibration_yawed_earbud", Generator::nodAxisCalibrationYawedEarbud);
+        m.put("nod_axis_calibration_up", Generator::nodAxisCalibrationUp);
+        m.put("nod_axis_calibration_sideways_rejected", Generator::nodAxisCalibrationSidewaysRejected);
+        m.put("nod_axis_calibration_no_nod", Generator::nodAxisCalibrationNoNod);
+        m.put("calibration_brief_fidget", Generator::calibrationBriefFidget);
         return Collections.unmodifiableMap(m);
     }
 
@@ -677,10 +832,23 @@ public final class Generator {
 
     /** Writes every scenario to {@code directory}/{name}.json and returns the paths. */
     public static List<Path> writeAll(Path directory) {
+        return writeAll(directory, SCENARIOS.keySet());
+    }
+
+    /** Writes the named scenarios (in {@link #SCENARIOS} order) to {@code directory}/{name}.json. */
+    public static List<Path> writeAll(Path directory, java.util.Collection<String> names) {
+        for (String name : names) {
+            if (!SCENARIOS.containsKey(name)) {
+                throw new IllegalArgumentException("unknown scenario: " + name);
+            }
+        }
         try {
             Files.createDirectories(directory);
             List<Path> written = new ArrayList<>();
             for (Map.Entry<String, Supplier<ScenarioSpec>> e : SCENARIOS.entrySet()) {
+                if (!names.contains(e.getKey())) {
+                    continue;
+                }
                 ObjectNode fixture = synthesize(e.getValue().get()).fixture();
                 // Round-trip through JSON so the reference is computed on exactly what is stored.
                 fixture = (ObjectNode) Json.parse(Json.dumpsCompact(fixture));
@@ -695,24 +863,40 @@ public final class Generator {
         }
     }
 
-    /** {@code [--out <dir>]}; the default is the shared fixture directory. */
+    /**
+     * {@code [--out <dir>] [--only name,name,...]}; the default is the shared fixture directory and
+     * every scenario. Writing a {@link #PYTHON_SCENARIOS} fixture into the shared directory would
+     * replace its Python samples, so there they are written only when named in {@code --only}.
+     */
     public static void main(String[] args) throws IOException {
         Path out = null;
+        List<String> only = null;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--out" -> out = Path.of(args[++i]);
+                case "--only" -> only = List.of(args[++i].split(","));
                 case "-h", "--help" -> {
-                    System.out.println("usage: Generator [--out <dir>]   (default: " + Fixtures.FIXTURE_SUBDIR + ")");
+                    System.out.println("usage: Generator [--out <dir>] [--only name,...]   (default: "
+                            + Fixtures.FIXTURE_SUBDIR + "; there the Python-generated fixtures are skipped "
+                            + "unless named in --only)");
                     return;
                 }
                 default -> throw new IllegalArgumentException("unknown argument: " + args[i]);
             }
         }
+        List<String> names;
+        if (only != null) {
+            names = only;
+        } else if (out == null) {
+            names = SCENARIOS.keySet().stream().filter(n -> !PYTHON_SCENARIOS.contains(n)).toList();
+        } else {
+            names = List.copyOf(SCENARIOS.keySet());
+        }
         if (out == null) {
             out = Fixtures.fixtureDir();
         }
         long total = 0;
-        for (Path p : writeAll(out)) {
+        for (Path p : writeAll(out, names)) {
             long size = Files.size(p);
             total += size;
             System.out.printf(Locale.ROOT, "%-40s %7.1f KiB%n", p.getFileName(), size / 1024.0);

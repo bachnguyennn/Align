@@ -101,6 +101,56 @@ final class CalibrationServiceTests: XCTestCase {
         }
         XCTAssertEqual(failure, .insufficientSamples)
     }
+
+    /// 251 samples (10 s at 25 Hz) at neutral, with `fidget` samples at 10° forward from index 100.
+    private func fidgetGravities(_ fidget: Int) -> [Vector3] {
+        (0..<251).map { i in
+            i >= 100 && i < 100 + fidget ? Pose.gravity(forward: 10) : Pose.gravity(forward: 0, lateral: 0.5)
+        }
+    }
+
+    private func finalStep(_ gravities: [Vector3], _ configuration: PostureConfiguration) -> CalibrationService.Step? {
+        var service = CalibrationService()
+        service.begin()
+        for (i, g) in gravities.enumerated() {
+            let step = service.add(gravity: g, timestamp: Double(i) / 25, configuration: configuration)
+            if case .inProgress = step {
+                continue
+            }
+            return step
+        }
+        return nil
+    }
+
+    /// D-017 (b): a brief fidget fails the v1 rule (quantile 1.0) but passes 0.9, without biasing the baseline.
+    func testQuantileToleratesABriefFidgetAndUsesTheInlierMean() {
+        let gs = fidgetGravities(20)  // 0.8 s = 8 % of the samples
+        var v1 = config
+        v1.calibrationSpreadQuantile = 1
+        XCTAssertEqual(finalStep(gs, v1), .failed(.tooMuchMovement, sampleCount: 251))
+        guard case let .succeeded(mean, _)? = finalStep(gs, config) else {
+            return XCTFail("expected success")
+        }
+        XCTAssertEqual(TiltEstimator.angleDegrees(between: mean, and: Pose.gravity(forward: 0, lateral: 0.5)), 0, accuracy: 1e-9)
+        XCTAssertEqual(finalStep(fidgetGravities(30), config), .failed(.tooMuchMovement, sampleCount: 251))
+    }
+
+    /// With every sample within the spread the baseline is bit for bit the v1 mean.
+    func testWithoutOutliersTheBaselineIsIdenticalToV1() {
+        let gs = (0..<300).map { i in Pose.gravity(forward: 2 * sin(Double(i) * 0.3), lateral: 1) }
+        var v1 = config
+        v1.calibrationSpreadQuantile = 1
+        XCTAssertEqual(finalStep(gs, config), finalStep(gs, v1))
+    }
+
+    func testQuantileComparisonToleratesRounding() {
+        XCTAssertTrue(CalibrationService.hasEnoughInliers(225, of: 250, quantile: 0.9))
+        XCTAssertFalse(CalibrationService.hasEnoughInliers(224, of: 250, quantile: 0.9))
+        XCTAssertTrue(CalibrationService.hasEnoughInliers(250, of: 250, quantile: 1))
+        XCTAssertFalse(CalibrationService.hasEnoughInliers(249, of: 250, quantile: 1))
+        XCTAssertTrue(CalibrationService.hasEnoughInliers(0, of: 250, quantile: 0))
+        XCTAssertFalse(CalibrationService.hasEnoughInliers(249, of: 250, quantile: 1.5))  // clamped to 1
+    }
 }
 
 final class PostureDetectorTests: XCTestCase {

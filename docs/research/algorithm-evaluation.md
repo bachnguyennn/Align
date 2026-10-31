@@ -27,10 +27,17 @@ mirrors it line for line:
    decimation (`maxProcessingRateHz`).
 2. Smoothing of the head-frame unit gravity vector: EMA with `alpha = 1 − exp(−dt/τ)`,
    renormalized (τ = `smoothingTimeConstant` = 0.5 s). Time-based, so rate- and jitter-independent.
-3. Calibration: 10 s of smoothed gravity; baseline = normalized mean; fails `tooMuchMovement` if
-   any sample is > 5° from the mean, `insufficientSamples` if < 100 samples.
+3. Calibration: 10 s of smoothed gravity; fails `insufficientSamples` if < 100 samples, and
+   (D-017 (b)) `tooMuchMovement` unless at least `calibrationSpreadQuantile` = 90 % of the samples
+   are within 5° of the mean; baseline = normalized mean of those inliers (identical to the v1
+   mean when every sample is an inlier).
+3b. Optional guided nod (D-017 (a)): after calibration the user nods once; the forward axis line
+   is the principal axis of the head rotation vectors (≥ 3°) in the baseline plane, its sign taken
+   from the default axes; lateral = `g0 × forward`. Rejected if more than 45° from the default
+   axis or if sideways ÷ forward motion > 0.35. The learned axes are stored on the baseline.
 4. Tilt (D-005): minimal rotation `r` taking baseline gravity `g0` to current `g`; head rotation
-   = `−r`; forward/lateral = projections on the configured axes, total = angle.
+   = `−r`; forward/lateral = projections on the effective axes (learned, else configured), total
+   = angle.
 5. State machine: neutral → deviating (component ≥ threshold; direction = largest
    |angle|/threshold ratio, then locked) → sustainedTilt after 30 s → neutral once the component
    drops below threshold − hysteresis (3°). Episodes are emitted when a sustained tilt ends or on
@@ -161,7 +168,8 @@ The deliberate ±9°/±4° movement in the `calibration_too_much_movement` fixtu
 | 20°/10° | −0.036 | 0.000 | 1.204 | −0.304 | −1.206 |
 
 Baseline-plane axes remove the single-axis offset error exactly. A combined pitch+roll offset
-leaves second-order crosstalk (0.3° at 10°/−5°, 1.2° at 20°/10°), which neither method fixes.
+leaves second-order crosstalk (0.3° at 10°/−5°, 1.2° at 20°/10°), which neither projection
+fixes; axes learned from a guided nod do (D-017, below).
 
 ### Decimation (10 seeds; `minimumCalibrationSamples` lowered to 40 for the low rates)
 
@@ -170,6 +178,85 @@ crossing + 30 s is 0.50, 0.54, 0.54 and 0.64 s. A 10 Hz cap is safe if CPU or ba
 requires it, but note that **at 10 Hz the default `minimumCalibrationSamples` = 100 is
 borderline**: 10 s gives 100–101 samples. Lower it when capping the rate.
 
+### D-017: guided-nod axis calibration and calibration spread quantile
+
+Java reference, 20 seeds per cell unless noted (full tables in
+`analytics/align-tools/results/evaluation.md`).
+
+**(i) Earbud yaw in the ear** (10 seeds; 40 s holds; mean of per-run medians). With the default
+axes a yawed earbud reads a forward tilt partly as lateral (≈ 20°·sin yaw) and loses
+1 − cos yaw of it; a 16° hold, just above the 15° threshold, is missed from 30° of yaw. After a
+guided 25° nod the readings are independent of yaw:
+
+| earbud yaw | default: 20° fwd reads / lateral crosstalk | default: 16° fwd hold reminded | learned: 20° fwd reads / crosstalk | learned: 16° hold reminded |
+|---|---|---|---|---|
+| 0° | 19.95° / 0.19° | 10/10 | 19.95° / 0.40° | 10/10 |
+| 10° | 19.63° / 3.39° | 10/10 | 19.95° / 0.40° | 10/10 |
+| 20° | 18.71° / 6.76° | 10/10 | 19.95° / 0.40° | 10/10 |
+| 30° | 17.23° / 9.93° | 2/10 | 19.95° / 0.40° | 10/10 |
+| 40° | 15.22° / 12.79° | 0/10 | 19.95° / 0.40° | 10/10 |
+
+The lateral direction behaves the same (13.1° forward crosstalk from a 20° side tilt at 40° yaw,
+0.36° with learned axes). Noise-free, learned axes give exactly 20.000° / 0.000° even with the
+combined 8°/−3° pitch/roll offset that leaves ≈ 1.2° of crosstalk with default axes, so the nod
+also removes the second-order mounting error noted below. The 0.40° residual is the sway in the
+synthetic hold, not an axis error.
+
+**(ii) Nod success vs sway and amplitude** (earbud yaw 20°; accepted / neutral calibrations that
+succeeded, mean |learned yaw − true yaw|):
+
+| sway σ | 8° nod | 12° nod | 20° nod | 30° nod |
+|---|---|---|---|---|
+| 0.5° | 0/20 | 1/20 | 20/20 (1.0°) | 20/20 (0.7°) |
+| 1.0° | 0/20 | 3/20 (2.6°) | 20/20 (2.0°) | 20/20 (1.3°) |
+| 2.0° | 1/20 | 7/20 (8.8°) | 20/20 (4.0°) | 20/20 (2.7°) |
+| 3.0° | 2/16 | 6/16 (13.3°) | 15/16 (6.2°) | 16/16 (4.3°) |
+
+A nod must clearly exceed the 12° minimum after the 0.5 s smoothing, so the UI should ask for a
+deliberate nod of about 20–30°. Small nods that do pass carry large yaw errors at higher sway, so
+the 12° minimum is kept (lowering it would accept worse axes). The yaw error grows with sway
+because one 2.6 s nod averages little of it: at the default 0.5° sway a 20° nod is within 3° of
+the truth (≤ 1° of crosstalk per 20° of tilt). Fit method (ii-b): the principal axis through the
+origin (default) beats the sign-aligned sum at every sway (1.00° vs 1.11° at 0.5°, 3.96° vs 4.74°
+at 2°); centring the vectors first helps slightly at normal sway (0.86°) but rejects more nods at
+high sway (14/20 vs 19/20 at 3°), so it was not adopted.
+
+**(iii) False acceptance** (earbud yaw 0):
+
+| motion during the axis calibration | accepted | inconsistentMotion | noNodDetected |
+|---|---|---|---|
+| 20° nod (reference) | 20/20 | 0 | 0 |
+| diagonal 20° tilt, 30° from forward | 20/20 (learns ≈ 30° yaw) | 0 | 0 |
+| diagonal, 45° from forward | 7/20 | 13/20 | 0 |
+| diagonal, 60° / ear to shoulder (90°) | 0/20 | 20/20 | 0 |
+| circular head roll (forward then sideways) | 0/20 | 20/20 | 0 |
+| head turns only, or head turns + 8° nod, or keeping still | 0/20 | 0 | 20/20 |
+
+Head turns never count (heading is excluded by construction). A tilt up to ~40° off the forward
+direction is indistinguishable from a yawed earbud and is learned as such: this is the price of
+supporting earbud yaw up to 45°, and why the nod must be guided.
+
+**(iv) Neutral calibration spread quantile** (cells: runs with the wanted outcome):
+
+| 10 s calibration | want | q 1.0 (v1) | q 0.95 | **q 0.9** | q 0.8 |
+|---|---|---|---|---|---|
+| still, sway 2° | accept | 19/20 | 19/20 | 20/20 | 20/20 |
+| still, sway 3° | accept | 10/20 | 11/20 | 15/20 | 18/20 |
+| one 1 s fidget to 10° | accept | 0/20 | 19/20 | 20/20 | 20/20 |
+| one 1 s fidget to 20° | accept | 0/20 | 0/20 | 20/20 | 20/20 |
+| nodding ±9°/±4° (fixture motion) | reject | 20/20 | 20/20 | 20/20 | 20/20 |
+| two 1.5 s fidgets to 12° | reject | 20/20 | 20/20 | 20/20 | 20/20 |
+| looking around ±6° sideways | reject | 20/20 | 20/20 | 18/20 | 7/20 |
+| slow slouch 0→10° during the 10 s | reject | 16/20 | 14/20 | 9/20 | 3/20 |
+
+0.9 accepts a single fidget of any size and noisier still users, and still rejects real nodding
+and repeated fidgets; 0.8 starts accepting users who look around. Because the baseline is the
+inlier mean, an accepted fidget leaves only 0.5° of baseline error (the same as no fidget). The
+cost: a slow drift during calibration (slouching 10° over 10 s) is accepted more often than with
+the v1 rule (11/20 vs 4/20), leaving a ≈ 4.4° biased baseline; neither rule detects drift well
+(see Limitations). Gentle ±6° nodding is attenuated to ±4.4° by the smoothing and accepted by
+every rule, with a harmless 0.3° baseline error.
+
 ### Throughput
 
 CPython reference: 2551 samples in 38 ms (15 µs/sample). The Java port runs the full evaluation in
@@ -177,8 +264,9 @@ about 14 s against 188 s for Python. Informational only.
 
 ### Reference ↔ Swift parity
 
-Every fixture in `shared/fixtures/motion` stores the reference output (`reference`, written by
-the Python reference). The Java port reproduces all eight blocks bit for bit (JUnit). The Swift
+Every fixture in `shared/fixtures/motion` stores the reference output (`reference`; the eight v1
+blocks written by the Python reference, the five D-017 blocks by Java). The Java pipeline
+reproduces all of them bit for bit (JUnit); D-017 changed none of the v1 blocks. The Swift
 `FixtureReplayTests` assert the same reminder/episode counts, directions, calibration outcomes,
 final state and number of state transitions, with times within one sample period and degrees
 within 0.05°; they pass in CI (`swift-package` and `swift-linux`).
@@ -192,7 +280,15 @@ within 0.05°; they pass in CI (`swift-package` and `swift-linux`).
   **Relaxed** 20° / backward 25° / lateral 20°, sustained 60 s; **Standard** = defaults;
   **Strict** 12° / backward 18° / lateral 12°, sustained 20 s. Reminder frequency is a separate
   setting (cooldown 2 / 5 / 10 min).
-- Record real AirPods sessions during S-05 and add them as fixtures before tuning further.
+- Offer the guided nod right after every neutral calibration (each earbud insertion is a new
+  fit) and ask for one deliberate nod of about 20–30°, down or up. Keep the D-017 defaults:
+  `axisCalibrationMinimumNodDegrees` 12°, `axisCalibrationMaxYawDegrees` 45°,
+  `axisCalibrationMaxOffAxisRatio` 0.35, `axisCalibrationDuration` 8 s,
+  `calibrationSpreadQuantile` 0.9 (tables above). On `.inconsistentMotion` ask the user to nod
+  straight down; on `.noNodDetected` to nod further.
+- Record real AirPods sessions (D-017 (d); `exec:java@replay`, format in
+  `shared/fixtures/README.md`) before tuning further; the first things to check are the learned
+  yaw spread across insertions and the sway level during calibration and the nod.
 
 ## Head tilt vs. forward head translation
 
@@ -230,21 +326,28 @@ while", not "forward head posture detected".
 
 - **All results are synthetic.** The motion model is plausible but not fitted to real AirPods
   data. Real sessions may show more drift, sensor-fusion transients or different noise.
-- **Axis convention is unverified (D-011).** A wrong sign flips forward/backward or left/right;
-  a swapped axis mixes them. The fix is configuration only (`PostureConfiguration.axes`).
-- **Earbud yaw in the ear, and combined pitch+roll, are not compensated** (up to about 1.2°
-  crosstalk per 20° tilt in the cases above). A short guided nod during calibration could learn
-  the flexion axis; not implemented.
+- **Axis convention is unverified (D-011).** The guided nod removes the dependence on it for
+  users who do the nod: the axis line is learned per fit, and only its sign comes from the
+  default (a nod down or up gives the same axes). Without the nod, a wrong sign flips
+  forward/backward or left/right; the fix is configuration only (`PostureConfiguration.axes`).
+  If the default forward axis were swapped with the lateral one, every correct nod would be
+  rejected as more than 45° off; S-05 must still confirm the default.
+- **The user may nod wrongly.** A diagonal tilt up to ~40° from forward is accepted and learned
+  as earbud yaw; small nods (< ~15° after smoothing) are rejected; with large sway (≥ 2°) one
+  nod gives yaw errors of 4–6° on average (up to 12–18°). The nod must be guided by the UI.
+- **A slow drift during the neutral calibration is not detected.** Slouching 10° over the 10 s
+  is accepted 11/20 times with quantile 0.9 (4/20 with the v1 rule) and biases the baseline by
+  ≈ 4.4°. A trend check (e.g. first vs last 2 s more than 3° apart ⇒ `tooMuchMovement`) would
+  catch it; proposed, not implemented (it would change the contract).
 - **Earbud hand-off (`sensorLocation` changes) is not treated as an interrupt.** Samples are
   processed as continuous data. An interrupt would split episodes and delay reminders without
-  fixing the real risk: the two earbuds may sit at different angles. If S-05 shows a gravity step
-  at hand-off, the better fix is a per-earbud baseline offset.
-- **Reminders are decided only at the moment a tilt becomes sustained** (contract §2). An episode
-  that becomes sustained inside the cooldown never reminds, even if it lasts long after the
-  cooldown ends (proposal in `docs/agents/reports/algorithm.md`).
+  fixing the real risk: the two earbuds may sit at different angles, and the baseline and the
+  learned axes belong to one earbud's fit. If S-05 shows a gravity step at hand-off, the better
+  fix is a per-earbud baseline (and axes).
 - **Direction is locked at onset.** A forward tilt that turns into a lateral tilt keeps
   reporting `forward` until forward falls below its release level.
 - **No activity gating.** Walking, conversation nods and lying down are not recognized; lying
   on the back reads as a large backward tilt. Monitoring assumes a seated user.
-- **No watchdog.** If samples simply stop, the pipeline cannot notice without a new sample; the
-  app must call `interrupt(at:)` on disconnect or pause.
+- **No watchdog in the pipeline.** If samples simply stop, the pipeline cannot notice without a
+  new sample; the app must call `interrupt(at:)` on disconnect or pause (D-017 (c) adds an app
+  watchdog).

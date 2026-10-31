@@ -104,9 +104,11 @@
         </configuration>
       </plugin>
       <!-- Command-line entry points, run from analytics/align-tools:
-             ./mvnw -q compile exec:java@generate
-             ./mvnw -q compile exec:java@evaluate
-           Options go in -Dexec.args; see shared/fixtures/README.md and Evaluate.java. -->
+             ./mvnw -q compile exec:java@generate      (new fixtures; see shared/fixtures/README.md)
+             ./mvnw -q compile exec:java@evaluate      (results/evaluation.md; see Evaluate.java)
+             ./mvnw -q compile exec:java@replay        (timeline summary of recordings or fixtures)
+             ./mvnw -q compile exec:java@rereference   (recompute fixture reference blocks, keep samples)
+           Options go in -Dexec.args. -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
@@ -122,6 +124,18 @@
             <id>evaluate</id>
             <configuration>
               <mainClass>com.bachnguyennn.align.reference.Evaluate</mainClass>
+            </configuration>
+          </execution>
+          <execution>
+            <id>replay</id>
+            <configuration>
+              <mainClass>com.bachnguyennn.align.reference.Replay</mainClass>
+            </configuration>
+          </execution>
+          <execution>
+            <id>rereference</id>
+            <configuration>
+              <mainClass>com.bachnguyennn.align.reference.Rereference</mainClass>
             </configuration>
           </execution>
         </executions>
