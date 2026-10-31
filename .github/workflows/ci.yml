@@ -125,6 +125,72 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  server:
+    name: Sync server (server/, PostgreSQL 16)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: align_test
+          POSTGRES_USER: align
+          # Throwaway database inside the job; not a secret.
+          POSTGRES_PASSWORD: align-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U align -d align_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # The suite defaults to in-memory H2; these point the same tests at the PostgreSQL service,
+      # and DatabaseEngineTest fails if they did not take effect.
+      ALIGN_TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/align_test
+      ALIGN_TEST_DATABASE_USERNAME: align
+      ALIGN_TEST_DATABASE_PASSWORD: align-ci
+      ALIGN_TEST_EXPECT_DATABASE: PostgreSQL
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: server/pom.xml
+
+      - name: mvnw verify (against PostgreSQL)
+        working-directory: server
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+          java -version 2>&1 | tee "$GITHUB_WORKSPACE/ci-logs/server-java-version.log"
+          ./mvnw -B -ntp verify 2>&1 | tee "$GITHUB_WORKSPACE/ci-logs/server-maven-verify.log"
+
+      - name: Summarize JUnit results
+        if: always()
+        run: |
+          summary="$(grep -E 'Tests run: [0-9]+, Failures: [0-9]+, Errors: [0-9]+, Skipped: [0-9]+$' ci-logs/server-maven-verify.log 2>/dev/null | tail -n 1 | sed -E 's/^\[[A-Z]+\] //' || true)"
+          database="$(grep -oE '\[align-server tests\] database: .*' ci-logs/server-maven-verify.log 2>/dev/null | head -n 1 | sed -E 's/^\[align-server tests\] database: //' || true)"
+          echo "::notice title=JUnit (server)::${summary:-no surefire summary line found} on ${database:-unknown database}"
+
+      - name: Annotate failure
+        if: failure()
+        run: |
+          log="$(ls -t ci-logs/*.log 2>/dev/null | head -n 1 || true)"
+          bash scripts/ci/annotate-log-tail.sh "${log:-ci-logs/none.log}" "server: $(basename "${log:-no log}")"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: server-logs
+          path: |
+            ci-logs/
+            server/target/surefire-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
   swift-package:
     name: Swift package (macOS + iOS Simulator build)
     runs-on: macos-15
