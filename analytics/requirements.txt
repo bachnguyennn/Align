@@ -1,0 +1,7 @@
+# Align analytics: Python reference implementation, fixture generator and evaluation.
+# Install (Windows):  py -3.12 -m venv analytics/.venv
+#                     analytics/.venv/Scripts/python -m pip install -r analytics/requirements.txt
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+pytest>=8.0
