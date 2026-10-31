@@ -18,6 +18,7 @@ and [`docs/agents/blockers.md`](docs/agents/blockers.md).
 | `ios/AlignAppTests` | App unit tests |
 | `analytics/align-tools` | Reference algorithm, fixture generator and evaluation in Java (Maven, D-015) |
 | `shared/fixtures` | Replayable motion fixtures shared by the reference tools and Swift tests |
+| `server` | Optional Phase 2 sync server: Java 21, Spring Boot, PostgreSQL (D-018; [`server/README.md`](server/README.md)) |
 | `docs/agents` | Architecture, contracts, decisions, task board, test plan |
 | `docs/research` | AirPods feasibility, algorithm evaluation, privacy review |
 
@@ -49,6 +50,7 @@ simulated head tilt.
 | Swift package (core, sensors, posture detection, fixture replay) | `cd ios/AlignKit && swift test` | Mac or Linux |
 | App unit tests | `cd ios && xcodegen generate && xcodebuild test -project Align.xcodeproj -scheme Align -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO` | Mac |
 | Reference algorithm, fixture replay, generator and evaluation (Java) | `cd analytics/align-tools && ./mvnw verify` (JDK 21; `mvnw.cmd verify` in cmd.exe) | any |
+| Sync server (API, auth, isolation, summaries; H2 by default, PostgreSQL in CI) | `cd server && ./mvnw verify` (JDK 21, no Docker needed) | any |
 | Hardware checks | quick: [`TESTING.md`](TESTING.md); full: [`docs/agents/test-plan.md`](docs/agents/test-plan.md) | iPhone + AirPods |
 
 CI runs all automated checks on every push. To read results without logging in to GitHub:
