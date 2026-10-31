@@ -189,6 +189,10 @@ public struct PostureConfiguration: Equatable, Codable, Sendable {
     /// Fraction of calibration samples that must lie within `calibrationMaxSpreadDegrees`.
     /// 1.0 = every sample (v1 behavior); lower values tolerate a brief fidget (D-017).
     public var calibrationSpreadQuantile: Double = 0.9
+    /// Calibration fails with `.tooMuchMovement` if the mean head direction of the first and the
+    /// last `calibrationDriftWindow` seconds differ by more than this (a slow slouch, D-020).
+    public var calibrationMaxDriftDegrees: Double = 3
+    public var calibrationDriftWindow: TimeInterval = 2
     public var minimumCalibrationSamples: Int = 100
     public var forwardThresholdDegrees: Double = 15
     public var backwardThresholdDegrees: Double = 20
@@ -222,6 +226,8 @@ public struct PostureConfiguration: Equatable, Codable, Sendable {
         case calibrationDuration
         case calibrationMaxSpreadDegrees
         case calibrationSpreadQuantile
+        case calibrationMaxDriftDegrees
+        case calibrationDriftWindow
         case minimumCalibrationSamples
         case forwardThresholdDegrees
         case backwardThresholdDegrees
@@ -247,6 +253,8 @@ public struct PostureConfiguration: Equatable, Codable, Sendable {
         calibrationDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .calibrationDuration) ?? d.calibrationDuration
         calibrationMaxSpreadDegrees = try c.decodeIfPresent(Double.self, forKey: .calibrationMaxSpreadDegrees) ?? d.calibrationMaxSpreadDegrees
         calibrationSpreadQuantile = try c.decodeIfPresent(Double.self, forKey: .calibrationSpreadQuantile) ?? d.calibrationSpreadQuantile
+        calibrationMaxDriftDegrees = try c.decodeIfPresent(Double.self, forKey: .calibrationMaxDriftDegrees) ?? d.calibrationMaxDriftDegrees
+        calibrationDriftWindow = try c.decodeIfPresent(TimeInterval.self, forKey: .calibrationDriftWindow) ?? d.calibrationDriftWindow
         minimumCalibrationSamples = try c.decodeIfPresent(Int.self, forKey: .minimumCalibrationSamples) ?? d.minimumCalibrationSamples
         forwardThresholdDegrees = try c.decodeIfPresent(Double.self, forKey: .forwardThresholdDegrees) ?? d.forwardThresholdDegrees
         backwardThresholdDegrees = try c.decodeIfPresent(Double.self, forKey: .backwardThresholdDegrees) ?? d.backwardThresholdDegrees

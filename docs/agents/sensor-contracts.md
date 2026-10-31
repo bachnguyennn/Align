@@ -110,6 +110,9 @@ public final class PostureMonitor {
 - A successful neutral calibration produces a baseline with `learnedAxes == nil`.
 - Neutral calibration: `.tooMuchMovement` unless at least `calibrationSpreadQuantile` of the
   samples are within `calibrationMaxSpreadDegrees` of the mean (1.0 = v1 rule).
+- Neutral calibration drift (D-020): also `.tooMuchMovement` if the normalized mean gravity of the
+  samples in the first `calibrationDriftWindow` seconds and of those in the last
+  `calibrationDriftWindow` seconds are more than `calibrationMaxDriftDegrees` apart.
 
 Internal components (public for testing): `MotionFilter`, `CalibrationService`, `PostureDetector`,
 `ReminderDecisionEngine`.

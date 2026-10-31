@@ -121,6 +121,8 @@ final class CodableRoundTripTests: XCTestCase {
             "calibrationDuration",
             "calibrationMaxSpreadDegrees",
             "calibrationSpreadQuantile",
+            "calibrationMaxDriftDegrees",
+            "calibrationDriftWindow",
             "minimumCalibrationSamples",
             "forwardThresholdDegrees",
             "backwardThresholdDegrees",
