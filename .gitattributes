@@ -1,0 +1,31 @@
+# Normalize line endings. The primary dev machine is Windows (core.autocrlf=true), but shell
+# scripts, YAML and Swift must stay LF in the repository, in working trees and in CI checkouts.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets: never normalize line endings or diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.heic binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.mp4 binary
+*.mov binary
+*.wav binary
+*.m4a binary
+*.caf binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.npz binary
+*.npy binary
+*.parquet binary
