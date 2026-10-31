@@ -218,4 +218,11 @@ final class ContractDefaultsTests: XCTestCase {
         XCTAssertEqual(axes.lateralAxis.length, 1, accuracy: 1e-12)
         XCTAssertEqual(axes.forwardAxis.dot(axes.lateralAxis), 0, accuracy: 1e-12)
     }
+
+    func testAirPodsDefaultAxesCrossProductPointsDown() {
+        // D-011: in a right-handed, Z-up head frame, (chin-down axis) x (right-ear-down axis)
+        // points down. Expects forwardAxis (-1, 0, 0) and lateralAxis (0, 1, 0).
+        let axes = HeadAxisConvention.airPodsDefault
+        assertVectorEqual(axes.forwardAxis.cross(axes.lateralAxis), Vector3(x: 0, y: 0, z: -1))
+    }
 }
