@@ -53,7 +53,7 @@ class FixturesTest {
         for (Path p : fixtures()) {
             total += Files.size(p);
         }
-        assertTrue(total < 1.25 * 1024 * 1024, "total fixture size " + total);
+        assertTrue(total < 2.0 * 1024 * 1024, "total fixture size " + total);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -109,6 +109,8 @@ class FixturesTest {
         if (!got.get("calibrationOutcomes").equals(want.get("calibrationOutcomes"))) {
             errors.add("calibrationOutcomes " + got.get("calibrationOutcomes") + " != " + want.get("calibrationOutcomes"));
         }
+        same("axisCalibrationOutcomes", got.path("axisCalibrationOutcomes"), want.path("axisCalibrationOutcomes"), errors);
+        same("learnedAxes", got.path("learnedAxes"), want.path("learnedAxes"), errors);
         compareList("reminders", got.get("reminders"), want.get("reminders"), errors, (g, w, prefix) -> {
             same(prefix + "direction", g.get("direction"), w.get("direction"), errors);
             near(prefix + "t", g, w, "t", TIME_TOLERANCE, maxDiff, 0, errors);
@@ -177,6 +179,47 @@ class FixturesTest {
         String text = Files.readString(path, StandardCharsets.UTF_8);
         ObjectNode fx = (ObjectNode) Json.parse(text);
         assertEquals(text, Generator.dumpsFixture(fx));
+    }
+
+    /** Fixtures with an axis calibration state it in {@code expected} and {@code reference}. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("fixtures")
+    void axisCalibrationFixturesDeclareTheirOutcomes(Path path) {
+        ObjectNode fx = Fixtures.loadFixture(path);
+        boolean hasAction = false;
+        for (JsonNode a : fx.path("actions")) {
+            assertTrue(Fixtures.ACTION_TYPES.contains(a.get("type").asText()), a.toString());
+            hasAction |= a.get("type").asText().equals("beginAxisCalibration");
+        }
+        assertEquals(hasAction, fx.get("expected").has("axisCalibrationOutcomes"));
+        assertEquals(hasAction, fx.get("expected").has("learnedAxes"));
+        assertEquals(hasAction, fx.get("reference").has("axisCalibrationOutcomes"));
+        assertEquals(hasAction, fx.get("reference").has("learnedAxes"));
+    }
+
+    /** The yawed-earbud fixture shows the crosstalk that learned axes remove. */
+    @Test
+    void yawedEarbudFixtureNeedsTheLearnedAxes() {
+        ObjectNode fx = Fixtures.loadFixture(Fixtures.fixtureDir().resolve("nod_axis_calibration_yawed_earbud.json"));
+        ReplayResult learned = Fixtures.replay(fx);
+        assertEquals(List.of("succeeded"), learned.axisCalibrationOutcomes());
+        assertTrue(learned.maxAbsLateralDegrees(25.0, 66.0) < 3.0);
+        // Without the axis calibration action the default axes read ~8.5 deg of lateral during the hold.
+        ObjectNode withoutNod = fx.deepCopy();
+        withoutNod.withArray("actions").removeAll();
+        withoutNod.withArray("actions").addObject().put("t", 0.0).put("type", "beginCalibration");
+        ReplayResult plain = Fixtures.replay(withoutNod);
+        assertTrue(plain.maxAbsLateralDegrees(25.0, 66.0) > 7.0, "lateral " + plain.maxAbsLateralDegrees(25.0, 66.0));
+    }
+
+    /** The fidget fixture is about D-017 (b): the v1 rule (quantile 1.0) rejects it. */
+    @Test
+    void briefFidgetFixtureFailsTheV1Rule() {
+        ObjectNode fx = Fixtures.loadFixture(Fixtures.fixtureDir().resolve("calibration_brief_fidget.json"));
+        PostureConfiguration v1 = PostureConfiguration.fromOverrides(fx.get("config"))
+                .replacing(b -> b.calibrationSpreadQuantile(1.0));
+        assertEquals(List.of("tooMuchMovement"), Fixtures.replay(fx, v1).calibrationOutcomes());
+        assertEquals(List.of("succeeded"), Fixtures.replay(fx).calibrationOutcomes());
     }
 
     @Test
