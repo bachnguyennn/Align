@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -358,6 +359,290 @@ public final class Evaluate {
                 "delay beyond crossing + 30 s (s)"), rows);
     }
 
+    // MARK: - D-017 experiments
+
+    /** Median of a list (NaN when empty). */
+    public static double median(List<Double> values) {
+        if (values.isEmpty()) {
+            return Double.NaN;
+        }
+        double[] v = values.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+        int n = v.length;
+        return n % 2 == 1 ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2.0;
+    }
+
+    private static double meanOf(List<Double> values) {
+        return values.stream().mapToDouble(Double::doubleValue).average().orElse(Double.NaN);
+    }
+
+    /**
+     * Calibrate (0-10 s), optionally a guided 25 deg nod (beginAxisCalibration at 11 s, nod at
+     * 12 s), neutral to 20 s, 3 s ramp to (forward, lateral), hold, 3 s ramp back. Earbud yawed by
+     * {@code mountYaw} (plus the default 8/-3 deg pitch/roll).
+     */
+    public static ScenarioSpec axisHoldSpec(long seed, double mountYaw, boolean nod, double forward, double lateral,
+                                            double hold) {
+        double end = 23.0 + hold;
+        ScenarioSpec spec = new ScenarioSpec("axis_hold", "", seed, end + 8.0)
+                .mountYaw(mountYaw)
+                .actions(nod ? Generator.calibrateThenAxisCalibration(Generator.AXIS_CALIBRATION_AT)
+                        : new ArrayList<>(Generator.CALIBRATE_AT_START))
+                .calmWindows(List.of(new ScenarioSpec.Interval(0.0, 20.0)))
+                .keyframes(List.of(new Keyframe(0, 0, 0), new Keyframe(20, 0, 0), new Keyframe(23, forward, lateral),
+                        new Keyframe(end, forward, lateral), new Keyframe(end + 3, 0, 0)));
+        if (nod) {
+            spec.glances(List.of(Generator.nod(Generator.NOD_AT, 25.0, 0.0)));
+        }
+        return spec;
+    }
+
+    /** Median forward / lateral reading over the tilts with from ≤ t ≤ to. */
+    private static double[] medianTilt(ReplayResult res, double from, double to) {
+        List<Double> f = new ArrayList<>();
+        List<Double> l = new ArrayList<>();
+        for (TiltEstimate tilt : res.tilts()) {
+            if (tilt.timestamp() >= from && tilt.timestamp() <= to) {
+                f.add(tilt.forwardDegrees());
+                l.add(tilt.lateralDegrees());
+            }
+        }
+        return new double[] {median(f), median(l)};
+    }
+
+    /** (i) Forward/lateral crosstalk and threshold errors vs earbud yaw, default vs learned axes. */
+    public static String mountYawCrosstalk(int seeds) {
+        List<List<String>> rows = new ArrayList<>();
+        double hold = 40.0;
+        for (double mountYaw : new double[] {0, 10, 20, 30, 40}) {
+            for (boolean learned : new boolean[] {false, true}) {
+                List<Double> fwdRead = new ArrayList<>();
+                List<Double> fwdCross = new ArrayList<>();
+                List<Double> latRead = new ArrayList<>();
+                List<Double> latCross = new ArrayList<>();
+                int fwd16 = 0;
+                int lat16 = 0;
+                int nodOk = 0;
+                for (int k = 0; k < seeds; k++) {
+                    long seed = 10_000 + k;
+                    ReplayResult f20 = Fixtures.replay(build(axisHoldSpec(seed, mountYaw, learned, 20, 0, hold)));
+                    ReplayResult l20 = Fixtures.replay(build(axisHoldSpec(seed + 500, mountYaw, learned, 0, 20, hold)));
+                    ReplayResult f16 = Fixtures.replay(build(axisHoldSpec(seed + 1000, mountYaw, learned, 16, 0, hold)));
+                    ReplayResult l16 = Fixtures.replay(build(axisHoldSpec(seed + 1500, mountYaw, learned, 0, 16, hold)));
+                    if (learned && f20.axisCalibrationOutcomes().equals(List.of("succeeded"))) {
+                        nodOk++;
+                    }
+                    double[] a = medianTilt(f20, 26.0, 23.0 + hold);
+                    double[] b = medianTilt(l20, 26.0, 23.0 + hold);
+                    fwdRead.add(a[0]);
+                    fwdCross.add(Math.abs(a[1]));
+                    latRead.add(b[1]);
+                    latCross.add(Math.abs(b[0]));
+                    fwd16 += onlyDirection(f16, TiltDirection.FORWARD) ? 1 : 0;
+                    lat16 += onlyDirection(l16, TiltDirection.RIGHT) ? 1 : 0;
+                }
+                rows.add(List.of(PythonFormat.fixed(mountYaw, 0), learned ? "learned (nod)" : "default",
+                        learned ? ratio(nodOk, seeds) : "-",
+                        fmt(meanOf(fwdRead), 2), fmt(meanOf(fwdCross), 2), fmt(meanOf(latRead), 2),
+                        fmt(meanOf(latCross), 2), ratio(fwd16, seeds), ratio(lat16, seeds)));
+            }
+        }
+        return table(List.of("earbud yaw (°)", "axes", "nod accepted", "20° forward hold: forward read (°)",
+                "→ lateral crosstalk (°)", "20° right hold: lateral read (°)", "→ forward crosstalk (°)",
+                "16° forward hold: 1 forward reminder", "16° right hold: 1 right reminder"), rows);
+    }
+
+    private static boolean onlyDirection(ReplayResult res, TiltDirection direction) {
+        return res.reminders().size() == 1 && res.reminders().get(0).direction() == direction;
+    }
+
+    /** Calibrate, then a guided nod of {@code amplitude} with sway {@code sway}; earbud yawed by {@code mountYaw}. */
+    public static ScenarioSpec nodSpec(long seed, double sway, double amplitude, double mountYaw) {
+        return new ScenarioSpec("nod", "", seed, 24.0)
+                .swayDeg(sway)
+                .mountYaw(mountYaw)
+                .actions(Generator.calibrateThenAxisCalibration(Generator.AXIS_CALIBRATION_AT))
+                .calmWindows(List.of(new ScenarioSpec.Interval(0.0, 20.0)))
+                .glances(List.of(Generator.nod(Generator.NOD_AT, amplitude, 0.0)));
+    }
+
+    /** |learned yaw - true yaw| for a replay of {@code spec}, or null if no axes were learned. */
+    private static Double yawError(ScenarioSpec spec, ReplayResult res) {
+        Double yaw = res.learnedYawDegrees();
+        if (yaw == null) {
+            return null;
+        }
+        return Math.abs(yaw - Pose.trueYawDegrees(spec.mountPitch(), spec.mountRoll(), spec.mountYaw(),
+                configFor(spec).axes()));
+    }
+
+    /** (ii) Nod calibration success vs sway and nod amplitude, and recovered yaw error (earbud yaw 20°). */
+    public static String nodCalibrationSuccess(int seeds) {
+        double[] amplitudes = {8.0, 12.0, 20.0, 30.0};
+        List<List<String>> rows = new ArrayList<>();
+        for (double sway : new double[] {0.5, 1.0, 2.0, 3.0}) {
+            List<String> row = new ArrayList<>();
+            row.add(fmt(sway, 1));
+            for (double amplitude : amplitudes) {
+                int ok = 0;
+                int neutralOk = 0;
+                List<Double> errors = new ArrayList<>();
+                for (int k = 0; k < seeds; k++) {
+                    ScenarioSpec spec = nodSpec(11_000 + k, sway, amplitude, 20.0);
+                    ReplayResult res = Fixtures.replay(build(spec));
+                    neutralOk += res.calibrationOutcomes().equals(List.of("succeeded")) ? 1 : 0;
+                    if (res.axisCalibrationOutcomes().equals(List.of("succeeded"))) {
+                        ok++;
+                        errors.add(yawError(spec, res));
+                    }
+                }
+                String cell = ratio(ok, neutralOk);
+                if (!errors.isEmpty()) {
+                    cell += " (yaw err " + fmt(meanOf(errors), 1) + "°, max " + fmt(Collections.max(errors), 1) + "°)";
+                }
+                row.add(cell);
+            }
+            rows.add(row);
+        }
+        List<String> headers = new ArrayList<>();
+        headers.add("sway std (°)");
+        for (double a : amplitudes) {
+            headers.add(PythonFormat.fixed(a, 0) + "° nod: accepted / neutral ok");
+        }
+        return table(headers, rows);
+    }
+
+    /** Principal axis vs sign-aligned sum vs centred principal axis, on 20° nods with sway (earbud yaw 20°). */
+    public static String nodLineFitComparison(int seeds) {
+        List<List<String>> rows = new ArrayList<>();
+        for (double sway : new double[] {0.5, 2.0, 3.0}) {
+            List<String> row = new ArrayList<>();
+            row.add(fmt(sway, 1));
+            for (AxisCalibrationService.LineFit method : AxisCalibrationService.LineFit.values()) {
+                List<Double> errors = new ArrayList<>();
+                int ok = 0;
+                for (int k = 0; k < seeds; k++) {
+                    ScenarioSpec spec = nodSpec(12_000 + k, sway, 20.0, 20.0);
+                    ReplayResult res = Fixtures.replay(build(spec), null, false, true, null, method);
+                    if (res.axisCalibrationOutcomes().equals(List.of("succeeded"))) {
+                        ok++;
+                        errors.add(yawError(spec, res));
+                    }
+                }
+                row.add(ratio(ok, seeds) + ", yaw err " + (errors.isEmpty() ? "n/a"
+                        : fmt(meanOf(errors), 2) + "° (max " + fmt(Collections.max(errors), 2) + "°)"));
+            }
+            rows.add(row);
+        }
+        return table(List.of("sway std (°)", "principal axis (default)", "sign-aligned sum", "centred principal axis"),
+                rows);
+    }
+
+    private record MotionCase(String name, LongFunction<ScenarioSpec> builder) {}
+
+    /** (iii) What a non-nod motion during the axis calibration produces. */
+    public static String axisFalseAcceptance(int seeds) {
+        List<MotionCase> cases = new ArrayList<>();
+        cases.add(new MotionCase("20° nod (reference)", s -> nodSpec(s, 0.5, 20, 0)));
+        for (double angle : new double[] {30, 45, 60, 90}) {
+            double c = StrictMath.cos(angle * Math.PI / 180.0);
+            double sn = StrictMath.sin(angle * Math.PI / 180.0);
+            String name = angle == 90 ? "ear to shoulder 20° (sideways)" : "diagonal 20° tilt, " + PythonFormat.fixed(angle, 0) + "° from forward";
+            cases.add(new MotionCase(name, s -> nodSpec(s, 0.5, 0, 0)
+                    .glances(List.of(Generator.nod(Generator.NOD_AT, 20 * c, 20 * sn)))));
+        }
+        cases.add(new MotionCase("circular head roll (forward then sideways)", s -> nodSpec(s, 0.5, 0, 0)
+                .glances(List.of(Generator.nod(Generator.NOD_AT, 20, 0), Generator.nod(Generator.NOD_AT + 0.8, 0, 15)))));
+        cases.add(new MotionCase("head turns only (every ~2 s, up to 45°)", s -> nodSpec(s, 0.5, 0, 0)
+                .glances(List.of()).headTurnInterval(2.0)));
+        cases.add(new MotionCase("head turns + 8° nod", s -> nodSpec(s, 0.5, 8, 0).headTurnInterval(2.0)));
+        cases.add(new MotionCase("keeps still", s -> nodSpec(s, 0.5, 0, 0).glances(List.of())));
+        List<List<String>> rows = new ArrayList<>();
+        for (MotionCase mc : cases) {
+            Map<String, Integer> counts = new LinkedHashMap<>();
+            for (String o : List.of("succeeded", "inconsistentMotion", "noNodDetected")) {
+                counts.put(o, 0);
+            }
+            List<Double> yaws = new ArrayList<>();
+            for (int k = 0; k < seeds; k++) {
+                ReplayResult res = Fixtures.replay(build(mc.builder().apply(13_000 + k)));
+                for (String o : res.axisCalibrationOutcomes()) {
+                    counts.merge(o, 1, Integer::sum);
+                }
+                if (res.learnedYawDegrees() != null) {
+                    yaws.add(Math.abs(res.learnedYawDegrees()));
+                }
+            }
+            rows.add(List.of(mc.name(), ratio(counts.get("succeeded"), seeds), ratio(counts.get("inconsistentMotion"), seeds),
+                    ratio(counts.get("noNodDetected"), seeds), yaws.isEmpty() ? "-" : fmt(meanOf(yaws), 1)));
+        }
+        return table(List.of("motion during axis calibration (earbud yaw 0)", "accepted", "inconsistentMotion",
+                "noNodDetected", "mean |learned yaw| if accepted (°)"), rows);
+    }
+
+    /** A 12 s neutral calibration scenario (steady_neutral motion model) with sway {@code sway}. */
+    private static ScenarioSpec calibrationSpec(long seed, double sway) {
+        return Generator.steadyNeutral(seed).swayDeg(sway).duration(12.0);
+    }
+
+    /** (iv) Neutral calibration acceptance (still users) and rejection (moving users) per quantile. */
+    public static String calibrationQuantile(int seeds) {
+        double[] quantiles = {1.0, 0.95, 0.9, 0.8};
+        List<MotionCase> still = new ArrayList<>();
+        for (double sway : new double[] {0.5, 1.0, 2.0, 3.0, 4.0}) {
+            still.add(new MotionCase("still, sway " + fmt(sway, 1) + "°", s -> calibrationSpec(s, sway)));
+        }
+        still.add(new MotionCase("one 1 s fidget to 10°", s -> calibrationSpec(s, 0.5)
+                .glances(List.of(new ScenarioSpec.Glance(2.0 + (s % 7), 1.0, 10.0, 0.0, 0.35)))));
+        still.add(new MotionCase("one 1 s fidget to 20°", s -> calibrationSpec(s, 0.5)
+                .glances(List.of(new ScenarioSpec.Glance(2.0 + (s % 7), 1.0, 20.0, 0.0, 0.35)))));
+        List<MotionCase> moving = new ArrayList<>();
+        moving.add(new MotionCase("nodding ±9° / ±4° (fixture motion)", Generator::calibrationTooMuchMovement));
+        moving.add(new MotionCase("nodding ±6° at 0.3 Hz", s -> calibrationSpec(s, 0.5)
+                .wobble(t -> new ScenarioSpec.Angles(6.0 * StrictMath.sin(2 * Math.PI * 0.3 * t), 0.0))));
+        moving.add(new MotionCase("looking around ±6° sideways", s -> calibrationSpec(s, 0.5)
+                .wobble(t -> new ScenarioSpec.Angles(2.0 * StrictMath.sin(2 * Math.PI * 0.17 * t),
+                        6.0 * StrictMath.sin(2 * Math.PI * 0.2 * t)))));
+        moving.add(new MotionCase("slow slouch 0→10° during calibration", s -> calibrationSpec(s, 0.5)
+                .keyframes(List.of(new Keyframe(0, 0, 0), new Keyframe(10, 10, 0)))));
+        moving.add(new MotionCase("two 1.5 s fidgets to 12°", s -> calibrationSpec(s, 0.5)
+                .glances(List.of(new ScenarioSpec.Glance(2.0, 1.5, 12.0, 0.0, 0.35),
+                        new ScenarioSpec.Glance(6.5, 1.5, -12.0, 0.0, 0.35)))));
+        List<List<String>> rows = new ArrayList<>();
+        for (List<MotionCase> group : List.of(still, moving)) {
+            boolean isMoving = group == moving;
+            for (MotionCase mc : group) {
+                List<String> row = new ArrayList<>();
+                row.add((isMoving ? "moving: " : "") + mc.name());
+                row.add(isMoving ? "rejected" : "accepted");
+                for (double q : quantiles) {
+                    int hits = 0;
+                    List<Double> errors = new ArrayList<>();
+                    for (int k = 0; k < seeds; k++) {
+                        ScenarioSpec spec = mc.builder().apply(14_000 + k);
+                        ReplayResult res = Fixtures.replay(build(spec), configFor(spec, b -> b.calibrationSpreadQuantile(q)));
+                        boolean ok = res.calibrationOutcomes().equals(List.of("succeeded"));
+                        hits += ok != isMoving ? 1 : 0;
+                        if (ok && res.finalBaseline() != null) {
+                            Vec3 truth = gravityInHeadFrame(Pose.poseAttitude(0, 0, 0, spec.mountPitch(), spec.mountRoll()));
+                            errors.add(Geometry.angleBetweenDegrees(res.finalBaseline().gravity(), truth));
+                        }
+                    }
+                    String cell = ratio(hits, seeds);
+                    if (!errors.isEmpty()) {
+                        cell += " (" + fmt(meanOf(errors), 2) + "°)";
+                    }
+                    row.add(cell);
+                }
+                rows.add(row);
+            }
+        }
+        List<String> headers = new ArrayList<>(List.of("10 s neutral calibration", "want"));
+        for (double q : quantiles) {
+            headers.add("quantile " + PythonFormat.fixed(q, 2) + (q == 0.9 ? " (default)" : ""));
+        }
+        return table(headers, rows);
+    }
+
     public static String throughput() {
         ScenarioSpec spec = Generator.gradualForwardSlouch(1);
         ObjectNode fx = build(spec);
@@ -386,6 +671,15 @@ public final class Evaluate {
         sections.put("Calibration robustness to sway", calibrationNoise(seeds));
         sections.put("Axis projection with earbud mounting offset (noise-free, 20° poses)", axisProjection());
         sections.put("Decimation", decimation(small));
+        sections.put("D-017 (i): earbud yaw crosstalk, default vs learned axes (40 s holds; " + small
+                + " seeds; reading = mean of per-run medians)", mountYawCrosstalk(small));
+        sections.put("D-017 (ii): guided-nod success vs sway and nod amplitude (earbud yaw 20°)",
+                nodCalibrationSuccess(seeds));
+        sections.put("D-017 (ii-b): axis line fit methods (20° nods, earbud yaw 20°)",
+                nodLineFitComparison(seeds));
+        sections.put("D-017 (iii): false acceptance during the axis calibration", axisFalseAcceptance(seeds));
+        sections.put("D-017 (iv): neutral calibration spread quantile (cells: runs with the wanted outcome; "
+                + "in brackets the mean baseline error of the accepted runs)", calibrationQuantile(seeds));
         sections.put("Throughput", throughput());
         String header = "# Align reference evaluation output\n\nGenerated by `./mvnw -q compile exec:java@evaluate "
                 + "-Dexec.args=\"--seeds " + seeds + "\"` (Java " + System.getProperty("java.version") + "). "

@@ -33,7 +33,9 @@ import java.util.List;
  *       weighting lets the large nod samples dominate the small sway samples, and a line through
  *       the origin is fitted whether the user nods down, up, or both.</li>
  *   <li>{@link LineFit#SIGNED_SUM}: the sum of the vectors after flipping those with a negative
- *       {@code e1} component (kept for the evaluation only).</li>
+ *       {@code e1} component, and {@link LineFit#CENTERED_PRINCIPAL_AXIS}: the principal axis of
+ *       the mean-centred vectors. Both are kept for the evaluation only (results/evaluation.md,
+ *       D-017 (ii-b)); Swift implements only the default.</li>
  * </ul>
  * Both angles lie in (-90 deg, 90 deg], so the learned forward axis has a non-negative dot product
  * with {@code e1}: the sign comes from the default convention and a nod down or up both work.
@@ -50,7 +52,7 @@ public final class AxisCalibrationService {
     public static final double RETURN_DEGREES = 5.0;
 
     /** How the forward axis line is fitted to the rotation vectors. */
-    public enum LineFit { PRINCIPAL_AXIS, SIGNED_SUM }
+    public enum LineFit { PRINCIPAL_AXIS, SIGNED_SUM, CENTERED_PRINCIPAL_AXIS }
 
     /** Result of feeding one sample: in progress, succeeded (axes), or failed. */
     public record AxisCalibrationStep(boolean finished, double progress, HeadAxisConvention axes,
@@ -208,12 +210,22 @@ public final class AxisCalibrationService {
             }
             angle = StrictMath.atan2(sb, sa);
         } else {
+            double ma = 0.0;
+            double mc = 0.0;
+            if (method == LineFit.CENTERED_PRINCIPAL_AXIS) {
+                for (Vec3 v : rotations) {
+                    ma += dot(v, e1);
+                    mc += dot(v, e2);
+                }
+                ma /= rotations.size();
+                mc /= rotations.size();
+            }
             double saa = 0.0;
             double sbb = 0.0;
             double sab = 0.0;
             for (Vec3 v : rotations) {
-                double a = dot(v, e1);
-                double c = dot(v, e2);
+                double a = dot(v, e1) - ma;
+                double c = dot(v, e2) - mc;
                 saa += a * a;
                 sbb += c * c;
                 sab += a * c;
