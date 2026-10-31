@@ -34,17 +34,15 @@ struct MockHeadPose: Equatable, Sendable {
 ///   `forwardAxis·forward + lateralAxis·lateral`, followed by a heading turn about world Z.
 /// - Gravity in the head frame = `attitude.conjugate.rotate((0, 0, −1))`.
 ///
-/// So with `HeadAxisConvention.airPodsDefault` (forwardAxis = +X) a +20° forward pose is a +20°
-/// rotation of the head about +X, and the head-frame gravity becomes (0, −sin 20°, −cos 20°).
+/// So with `HeadAxisConvention.airPodsDefault` (forwardAxis = −X, D-011) a +20° forward pose is
+/// a +20° rotation of the head about −X, and the head-frame gravity becomes (0, +sin 20°, −cos 20°).
 /// Heading changes the attitude but not the head-frame gravity.
 ///
 /// Whether `CMAttitude.quaternion` uses the same head→world direction is UNVERIFIED (S-05);
 /// the posture pipeline uses gravity only (D-005), so the mock is consistent for it either way.
 ///
 /// The mock follows whatever `axes` says, even if that convention is physically impossible.
-/// Note: in a right-handed frame with +Z up, the chin-down axis × the right-ear-down axis
-/// must point DOWN, but `airPodsDefault` gives +X × +Y = +Z (up), so one of its two signs
-/// cannot match real hardware. See docs/research/airpods-motion-feasibility.md §5.
+/// See docs/research/airpods-motion-feasibility.md §5.
 struct MockMotionGenerator: Sendable {
     var scenario: MockScenario
     var sampleRateHz: Double

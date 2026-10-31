@@ -50,9 +50,9 @@ final class MockMotionGeneratorTests: XCTestCase {
         )
         let gravity = MockMotionGenerator.gravity(forAttitude: attitude)
 
-        // +20° head rotation about +X (forwardAxis): head-frame gravity tips toward −Y.
+        // +20° head rotation about forwardAxis (−X): the nose tips down, so head-frame gravity tips toward +Y.
         XCTAssertEqual(gravity.x, 0, accuracy: 1e-12)
-        XCTAssertEqual(gravity.y, -sin20, accuracy: 1e-12)
+        XCTAssertEqual(gravity.y, sin20, accuracy: 1e-12)
         XCTAssertEqual(gravity.z, -cos20, accuracy: 1e-12)
         XCTAssertEqual(gravity.length, 1, accuracy: 1e-12)
 
