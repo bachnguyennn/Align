@@ -47,6 +47,18 @@ public enum CalibrationFailure: String, Error, Codable, Sendable {
     case sensorInterrupted
 }
 
+/// Why a guided-nod axis calibration (D-017) did not produce axes.
+public enum AxisCalibrationFailure: String, Error, Codable, Sendable {
+    /// `beginAxisCalibration()` was called without a neutral baseline.
+    case needsBaseline
+    /// The head never tilted `axisCalibrationMinimumNodDegrees` away from neutral in time.
+    case noNodDetected
+    /// The motion was not a single forward/backward nod (too much sideways component, or its
+    /// axis is more than `axisCalibrationMaxYawDegrees` from the default forward axis).
+    case inconsistentMotion
+    case sensorInterrupted
+}
+
 /// The user's neutral head position.
 public struct NeutralBaseline: Equatable, Codable, Sendable {
     /// Mean unit gravity direction in the head frame while neutral. Independent of heading,
@@ -54,20 +66,31 @@ public struct NeutralBaseline: Equatable, Codable, Sendable {
     public var gravity: Vector3
     public var capturedAt: Date
     public var sampleCount: Int
-    /// Increments on each successful calibration; stored on sessions as `calibrationVersion`.
+    /// Increments on each successful calibration (neutral or axis); stored on sessions as
+    /// `calibrationVersion`.
     public var version: Int
+    /// Head axes learned from a guided nod for this earbud fit (D-017). Nil = use
+    /// `PostureConfiguration.axes`. A new neutral calibration clears it.
+    public var learnedAxes: HeadAxisConvention?
 
-    public init(gravity: Vector3, capturedAt: Date, sampleCount: Int, version: Int) {
+    public init(gravity: Vector3, capturedAt: Date, sampleCount: Int, version: Int, learnedAxes: HeadAxisConvention? = nil) {
         self.gravity = gravity
         self.capturedAt = capturedAt
         self.sampleCount = sampleCount
         self.version = version
+        self.learnedAxes = learnedAxes
     }
 }
 
 public enum CalibrationOutcome: Equatable, Sendable {
     case succeeded(NeutralBaseline)
     case failed(CalibrationFailure)
+}
+
+public enum AxisCalibrationOutcome: Equatable, Sendable {
+    /// The learned axes; the monitor's baseline now carries them.
+    case succeeded(HeadAxisConvention)
+    case failed(AxisCalibrationFailure)
 }
 
 /// Emitted on the update where a reminder should be delivered now.
@@ -113,6 +136,8 @@ public struct PostureUpdate: Equatable, Sendable {
     public var completedEpisode: PostureEpisode?
     /// Set only on the update where a calibration attempt finished.
     public var calibrationOutcome: CalibrationOutcome?
+    /// Set only on the update where an axis calibration attempt finished (D-017).
+    public var axisCalibrationOutcome: AxisCalibrationOutcome?
 
     public init(
         timestamp: TimeInterval,
@@ -120,7 +145,8 @@ public struct PostureUpdate: Equatable, Sendable {
         state: PostureState,
         reminder: ReminderDecision? = nil,
         completedEpisode: PostureEpisode? = nil,
-        calibrationOutcome: CalibrationOutcome? = nil
+        calibrationOutcome: CalibrationOutcome? = nil,
+        axisCalibrationOutcome: AxisCalibrationOutcome? = nil
     ) {
         self.timestamp = timestamp
         self.tilt = tilt
@@ -128,6 +154,7 @@ public struct PostureUpdate: Equatable, Sendable {
         self.reminder = reminder
         self.completedEpisode = completedEpisode
         self.calibrationOutcome = calibrationOutcome
+        self.axisCalibrationOutcome = axisCalibrationOutcome
     }
 }
 
@@ -156,8 +183,12 @@ public struct HeadAxisConvention: Equatable, Codable, Sendable {
 /// Tunable detection parameters. Defaults are experimental, not medically validated.
 public struct PostureConfiguration: Equatable, Codable, Sendable {
     public var calibrationDuration: TimeInterval = 10
-    /// Calibration fails if any sample's tilt from the calibration mean exceeds this.
+    /// Calibration fails with `.tooMuchMovement` unless at least `calibrationSpreadQuantile` of
+    /// the samples lie within this tilt of the calibration mean.
     public var calibrationMaxSpreadDegrees: Double = 5
+    /// Fraction of calibration samples that must lie within `calibrationMaxSpreadDegrees`.
+    /// 1.0 = every sample (v1 behavior); lower values tolerate a brief fidget (D-017).
+    public var calibrationSpreadQuantile: Double = 0.9
     public var minimumCalibrationSamples: Int = 100
     public var forwardThresholdDegrees: Double = 15
     public var backwardThresholdDegrees: Double = 20
@@ -173,8 +204,63 @@ public struct PostureConfiguration: Equatable, Codable, Sendable {
     /// A gap between samples longer than this resets filters and deviation timers.
     public var maxSampleGap: TimeInterval = 1.0
     public var axes: HeadAxisConvention = .airPodsDefault
+    /// Guided-nod axis calibration (D-017): longest time to wait for the nod.
+    public var axisCalibrationDuration: TimeInterval = 8
+    /// The nod must reach at least this tilt from neutral.
+    public var axisCalibrationMinimumNodDegrees: Double = 12
+    /// Largest accepted angle between the learned and the default forward axis (earbud yaw in
+    /// the ear). Larger means the user tilted sideways rather than nodding.
+    public var axisCalibrationMaxYawDegrees: Double = 45
+    /// Largest accepted ratio of sideways to forward/backward motion during the nod.
+    public var axisCalibrationMaxOffAxisRatio: Double = 0.35
 
     public init() {}
 
     public static let `default` = PostureConfiguration()
+
+    private enum CodingKeys: String, CodingKey {
+        case calibrationDuration
+        case calibrationMaxSpreadDegrees
+        case calibrationSpreadQuantile
+        case minimumCalibrationSamples
+        case forwardThresholdDegrees
+        case backwardThresholdDegrees
+        case lateralThresholdDegrees
+        case hysteresisDegrees
+        case sustainedDuration
+        case reminderCooldown
+        case smoothingTimeConstant
+        case maxProcessingRateHz
+        case maxSampleGap
+        case axes
+        case axisCalibrationDuration
+        case axisCalibrationMinimumNodDegrees
+        case axisCalibrationMaxYawDegrees
+        case axisCalibrationMaxOffAxisRatio
+    }
+
+    /// Missing keys take their defaults, so a configuration stored by an older app version (which
+    /// lacks newer fields) still decodes instead of silently resetting the user's settings.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = PostureConfiguration()
+        calibrationDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .calibrationDuration) ?? d.calibrationDuration
+        calibrationMaxSpreadDegrees = try c.decodeIfPresent(Double.self, forKey: .calibrationMaxSpreadDegrees) ?? d.calibrationMaxSpreadDegrees
+        calibrationSpreadQuantile = try c.decodeIfPresent(Double.self, forKey: .calibrationSpreadQuantile) ?? d.calibrationSpreadQuantile
+        minimumCalibrationSamples = try c.decodeIfPresent(Int.self, forKey: .minimumCalibrationSamples) ?? d.minimumCalibrationSamples
+        forwardThresholdDegrees = try c.decodeIfPresent(Double.self, forKey: .forwardThresholdDegrees) ?? d.forwardThresholdDegrees
+        backwardThresholdDegrees = try c.decodeIfPresent(Double.self, forKey: .backwardThresholdDegrees) ?? d.backwardThresholdDegrees
+        lateralThresholdDegrees = try c.decodeIfPresent(Double.self, forKey: .lateralThresholdDegrees) ?? d.lateralThresholdDegrees
+        hysteresisDegrees = try c.decodeIfPresent(Double.self, forKey: .hysteresisDegrees) ?? d.hysteresisDegrees
+        sustainedDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .sustainedDuration) ?? d.sustainedDuration
+        reminderCooldown = try c.decodeIfPresent(TimeInterval.self, forKey: .reminderCooldown) ?? d.reminderCooldown
+        smoothingTimeConstant = try c.decodeIfPresent(TimeInterval.self, forKey: .smoothingTimeConstant) ?? d.smoothingTimeConstant
+        maxProcessingRateHz = try c.decodeIfPresent(Double.self, forKey: .maxProcessingRateHz)
+        maxSampleGap = try c.decodeIfPresent(TimeInterval.self, forKey: .maxSampleGap) ?? d.maxSampleGap
+        axes = try c.decodeIfPresent(HeadAxisConvention.self, forKey: .axes) ?? d.axes
+        axisCalibrationDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .axisCalibrationDuration) ?? d.axisCalibrationDuration
+        axisCalibrationMinimumNodDegrees = try c.decodeIfPresent(Double.self, forKey: .axisCalibrationMinimumNodDegrees) ?? d.axisCalibrationMinimumNodDegrees
+        axisCalibrationMaxYawDegrees = try c.decodeIfPresent(Double.self, forKey: .axisCalibrationMaxYawDegrees) ?? d.axisCalibrationMaxYawDegrees
+        axisCalibrationMaxOffAxisRatio = try c.decodeIfPresent(Double.self, forKey: .axisCalibrationMaxOffAxisRatio) ?? d.axisCalibrationMaxOffAxisRatio
+    }
 }

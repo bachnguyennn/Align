@@ -113,13 +113,14 @@ final class CodableRoundTripTests: XCTestCase {
 
     func testPostureConfigurationJSONKeys() throws {
         // If this fails you added, renamed or removed a field. Settings are stored as JSON in
-        // UserDefaults and the synthesized decoder requires every non-optional key, so make sure
-        // JSON written by the previous version still decodes (or migrate it), then update this list.
+        // UserDefaults: give a new field a default in `init(from:)` so JSON written by the
+        // previous version still decodes (see the v1 test below), then update this list.
         var config = PostureConfiguration()
         config.maxProcessingRateHz = 25
         XCTAssertEqual(try jsonKeys(config), [
             "calibrationDuration",
             "calibrationMaxSpreadDegrees",
+            "calibrationSpreadQuantile",
             "minimumCalibrationSamples",
             "forwardThresholdDegrees",
             "backwardThresholdDegrees",
@@ -131,7 +132,33 @@ final class CodableRoundTripTests: XCTestCase {
             "maxProcessingRateHz",
             "maxSampleGap",
             "axes",
+            "axisCalibrationDuration",
+            "axisCalibrationMinimumNodDegrees",
+            "axisCalibrationMaxYawDegrees",
+            "axisCalibrationMaxOffAxisRatio",
         ])
+    }
+
+    func testPostureConfigurationDecodesV1JSONWithoutNewerKeys() throws {
+        // Shape written by the Phase 1 app, before D-017 added fields.
+        let json = """
+        { "calibrationDuration": 10, "calibrationMaxSpreadDegrees": 5, "minimumCalibrationSamples": 100,
+          "forwardThresholdDegrees": 12, "backwardThresholdDegrees": 17, "lateralThresholdDegrees": 12,
+          "hysteresisDegrees": 3, "sustainedDuration": 20, "reminderCooldown": 120,
+          "smoothingTimeConstant": 0.5, "maxSampleGap": 1,
+          "axes": { "forwardAxis": { "x": -1, "y": 0, "z": 0 }, "lateralAxis": { "x": 0, "y": 1, "z": 0 } } }
+        """
+        let decoded = try JSONDecoder().decode(PostureConfiguration.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.forwardThresholdDegrees, 12)
+        XCTAssertEqual(decoded.sustainedDuration, 20)
+        XCTAssertEqual(decoded.reminderCooldown, 120)
+        XCTAssertNil(decoded.maxProcessingRateHz)
+        XCTAssertEqual(decoded.calibrationSpreadQuantile, PostureConfiguration.default.calibrationSpreadQuantile)
+        XCTAssertEqual(decoded.axisCalibrationDuration, PostureConfiguration.default.axisCalibrationDuration)
+    }
+
+    func testPostureConfigurationDecodesEmptyObjectAsDefault() throws {
+        XCTAssertEqual(try JSONDecoder().decode(PostureConfiguration.self, from: Data("{}".utf8)), .default)
     }
 
     // MARK: NeutralBaseline
@@ -156,6 +183,22 @@ final class CodableRoundTripTests: XCTestCase {
             version: 1
         )
         XCTAssertEqual(try jsonKeys(baseline), ["gravity", "capturedAt", "sampleCount", "version"])
+    }
+
+    func testNeutralBaselineWithLearnedAxesRoundTrip() throws {
+        let axes = HeadAxisConvention(
+            forwardAxis: Vector3(x: -0.875, y: -0.484375, z: 0),
+            lateralAxis: Vector3(x: -0.484375, y: 0.875, z: 0)
+        )
+        let baseline = NeutralBaseline(
+            gravity: Vector3(x: 0, y: 0, z: -1),
+            capturedAt: Date(timeIntervalSinceReferenceDate: 0),
+            sampleCount: 100,
+            version: 2,
+            learnedAxes: axes
+        )
+        XCTAssertEqual(try jsonKeys(baseline), ["gravity", "capturedAt", "sampleCount", "version", "learnedAxes"])
+        XCTAssertEqual(try roundTrip(baseline).learnedAxes, axes)
     }
 
     // MARK: Smaller Codable types

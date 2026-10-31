@@ -76,8 +76,40 @@ public final class PostureMonitor {
     public func interrupt(at timestamp: TimeInterval) -> PostureUpdate
     /// Clears reminder cooldown (e.g. new session).
     public func resetCooldown()
+
+    // D-017 guided-nod axis calibration
+    /// Axes in use: `baseline?.learnedAxes ?? configuration.axes`.
+    public var effectiveAxes: HeadAxisConvention { get }
+    /// Starts waiting for one nod. Requires a baseline; without one, the next update reports
+    /// `.failed(.needsBaseline)`. Cancels a neutral calibration in progress.
+    public func beginAxisCalibration()
+    public func cancelAxisCalibration()
+    /// Removes learned axes from the baseline (back to `configuration.axes`).
+    public func clearLearnedAxes()
 }
 ```
+
+### Axis calibration (D-017)
+
+- While active: `state == .calibrating(progress)` with progress = elapsed / `axisCalibrationDuration`;
+  no deviation timers, reminders or episodes (as during neutral calibration). An open episode is
+  closed on the first update, as `beginCalibration()` does.
+- Head rotation of each smoothed sample relative to the baseline gravity is computed as in the
+  tilt estimate (it lies in the baseline plane; heading never contributes).
+- Success needs a peak of at least `axisCalibrationMinimumNodDegrees`. The forward axis line is
+  the dominant direction of the rotation vectors above a small floor; its sign is chosen so that
+  it has a non-negative dot product with the default forward axis projected onto the baseline
+  plane (a nod down or up both work). Reject with `.inconsistentMotion` if that angle exceeds
+  `axisCalibrationMaxYawDegrees`, or if sideways ÷ forward motion exceeds
+  `axisCalibrationMaxOffAxisRatio`. Lateral axis = normalized(baseline gravity × forward).
+- It finishes on the first update after the head returns near neutral following a valid peak,
+  or at `axisCalibrationDuration` (then `.noNodDetected` if no valid peak). Exactly one update
+  carries `axisCalibrationOutcome`.
+- On success the baseline gets `learnedAxes` and `version + 1`; tilt from the next sample uses
+  them. `interrupt` or a sample gap fails it with `.sensorInterrupted`.
+- A successful neutral calibration produces a baseline with `learnedAxes == nil`.
+- Neutral calibration: `.tooMuchMovement` unless at least `calibrationSpreadQuantile` of the
+  samples are within `calibrationMaxSpreadDegrees` of the mean (1.0 = v1 rule).
 
 Internal components (public for testing): `MotionFilter`, `CalibrationService`, `PostureDetector`,
 `ReminderDecisionEngine`.
@@ -100,6 +132,7 @@ Internal components (public for testing): `MotionFilter`, `CalibrationService`, 
 
 ## 3. Replay fixtures — owned by the Algorithm agent
 
-`shared/fixtures/motion/*.json`, format documented in `shared/fixtures/README.md`. Both
+`shared/fixtures/motion/*.json`, format documented in `shared/fixtures/README.md`. Fixtures may
+use the action `beginAxisCalibration`; references then include `axisCalibrationOutcomes`. Both
 `analytics/align-tools` (Java) and `PostureDetectionTests` (Swift) must replay the same files
 and agree on expected reminders and episodes.
