@@ -44,5 +44,5 @@ compiled or run is at most `in review`.
 | F-10 | Opt-in sync toggle, Keychain token, upload queue with per-row dirty flag | Frontend | B-01 | todo | | |
 | F-11 | Guided-nod calibration step, sample watchdog, Diagnostics motion recording (D-017) | Frontend | A-06 | todo | | |
 | A-06 | Nod axis calibration + spread quantile in Java and Swift, fixtures, evaluation, replay CLI (D-017) | Algorithm | D-017 | done (JUnit 284; Swift 158 on macOS + Linux, run 41247526330) | `AxisCalibrationService`, 5 new fixtures, `exec:java@replay` | CI |
-| A-07 | Calibration drift check (D-020) in Java and Swift, fixture, evaluation | Algorithm | A-06 | in progress | | |
+| A-07 | Calibration drift check (D-020) in Java and Swift, fixture, evaluation | Algorithm | A-06 | done (JUnit 301; Swift 164 on macOS + Linux, run 41248708516) | `CalibrationService`, `calibration_slow_slouch` fixture | CI |
 | Q-05 | Review privacy review §9 (server data) | QA | B-01 | todo | | |
