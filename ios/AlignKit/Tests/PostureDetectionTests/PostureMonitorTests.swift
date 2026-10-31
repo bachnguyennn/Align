@@ -104,6 +104,20 @@ final class PostureMonitorTests: XCTestCase {
         XCTAssertEqual(third.filter { $0.reminder != nil }.count, 1)
     }
 
+    func testTiltSustainedDuringCooldownRemindsWhenCooldownEnds() {
+        let monitor = calibratedMonitor()
+        feed(monitor, from: 10.04, to: 12)
+        let first = feed(monitor, from: 12, to: 50, forward: 25)
+        feed(monitor, from: 50, to: 55)
+        let second = feed(monitor, from: 55, to: 400, forward: 25)
+        let firstReminder = first.compactMap { $0.reminder }.first
+        let deferred = second.compactMap { $0.reminder }
+        XCTAssertEqual(deferred.count, 1)
+        guard let lastTime = firstReminder?.timestamp, let reminder = deferred.first else { return }
+        XCTAssertEqual(reminder.timestamp, lastTime + 300, accuracy: dt)
+        XCTAssertEqual(reminder.sustainedSeconds, reminder.timestamp - (55 + stepLag), accuracy: dt)
+    }
+
     func testInterruptClosesEpisodeAndResets() {
         let monitor = calibratedMonitor()
         feed(monitor, from: 10.04, to: 12)

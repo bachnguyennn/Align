@@ -159,7 +159,10 @@ public final class PostureMonitor {
             if episode == nil, let completed = out.completedEpisode {
                 episode = completed
             }
-            if out.becameSustained, let direction = detector.direction, let start = detector.since {
+            // Evaluated on every sustained update until this episode has reminded, so a tilt that
+            // became sustained during the cooldown still reminds once the cooldown ends (D-016).
+            if detector.phase == .sustained, !detector.reminderTriggered,
+               let direction = detector.direction, let start = detector.since {
                 let decision = reminders.evaluate(
                     timestamp: t,
                     direction: direction,

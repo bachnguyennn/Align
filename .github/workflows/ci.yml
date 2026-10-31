@@ -363,6 +363,12 @@ jobs:
             | tee "$GITHUB_WORKSPACE/ci-logs/app-test.log" \
             | xcbeautify --renderer github-actions
 
+      - name: Summarize app XCTest results
+        if: always() && steps.detect.outputs.present == 'true'
+        run: |
+          summary="$(grep -E 'Executed [0-9]+ tests?' "$GITHUB_WORKSPACE/ci-logs/app-test.log" | tail -n 1 || true)"
+          echo "::notice title=XCTest (iOS app)::${summary:-no XCTest summary line found}"
+
       - name: Annotate failure
         if: failure()
         run: |

@@ -122,6 +122,18 @@ def test_cooldown_blocks_second_episode_and_reset_cooldown_allows_it():
     assert sum(1 for u in third if u.reminder) == 1
 
 
+def test_tilt_sustained_during_cooldown_reminds_when_cooldown_ends():
+    m = calibrated_monitor()
+    feed(m, 10.04, 12.0)
+    first = feed(m, 12.0, 50.0, forward=25.0)
+    feed(m, 50.0, 55.0)
+    second = feed(m, 55.0, 400.0, forward=25.0)
+    first_time = next(u.reminder.timestamp for u in first if u.reminder)
+    deferred = [u.reminder for u in second if u.reminder]
+    assert len(deferred) == 1
+    assert deferred[0].timestamp == pytest.approx(first_time + 300.0, abs=1.0 / 25.0)
+
+
 def test_interrupt_closes_episode_and_resets():
     m = calibrated_monitor()
     feed(m, 10.04, 12.0)

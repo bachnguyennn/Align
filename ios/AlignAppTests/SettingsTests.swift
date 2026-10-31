@@ -16,8 +16,8 @@ final class SensitivityPresetTests: XCTestCase {
         XCTAssertEqual(balanced.sustainedDuration, 30)
 
         let strict = SensitivityPreset.strict.apply(to: .default)
-        XCTAssertEqual(strict.forwardThresholdDegrees, 10)
-        XCTAssertEqual(strict.lateralThresholdDegrees, 10)
+        XCTAssertEqual(strict.forwardThresholdDegrees, 12)
+        XCTAssertEqual(strict.lateralThresholdDegrees, 12)
         XCTAssertEqual(strict.sustainedDuration, 20)
     }
 

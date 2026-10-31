@@ -55,7 +55,7 @@ enum SensitivityPreset: String, CaseIterable, Identifiable {
         switch self {
         case .gentle: return 20
         case .balanced: return 15
-        case .strict: return 10
+        case .strict: return 12
         case .custom: return nil
         }
     }

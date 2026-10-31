@@ -89,8 +89,10 @@ Internal components (public for testing): `MotionFilter`, `CalibrationService`, 
   update with `calibrationOutcome` set. On success the baseline `version` = previous + 1 (or 1).
 - With a baseline: `.neutral` → `.deviating` when a smoothed tilt component crosses its threshold
   → `.sustainedTilt` after `sustainedDuration` → back to `.neutral` once below `threshold − hysteresis`.
-- `reminder` is non-nil on the first update in a sustained tilt, if at least `reminderCooldown`
-  has passed since the last reminder. Never more than one reminder per episode.
+- `reminder` is non-nil on the first update in a sustained tilt at which at least
+  `reminderCooldown` has passed since the last reminder. A tilt that becomes sustained during the
+  cooldown therefore reminds when the cooldown ends, if it is still sustained (D-016). Never more
+  than one reminder per episode.
 - `completedEpisode` is set when a sustained tilt ends or on `interrupt`.
 - A gap greater than `maxSampleGap` acts like `interrupt` at the previous sample's timestamp.
 - Direction precedence when several thresholds are exceeded: the component with the largest

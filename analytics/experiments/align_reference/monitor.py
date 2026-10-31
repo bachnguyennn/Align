@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .calibration import CalibrationService
-from .detector import PHASE_NEUTRAL, PostureDetector, component_degrees
+from .detector import PHASE_NEUTRAL, PHASE_SUSTAINED, PostureDetector, component_degrees
 from .geometry import gravity_in_head_frame, length, normalized
 from .model import (
     CALIBRATING,
@@ -153,7 +153,9 @@ class PostureMonitor:
             out = self.detector.update(tilt, config)
             if out.completed_episode is not None and episode is None:
                 episode = out.completed_episode
-            if out.became_sustained:
+            # Evaluated on every sustained update until this episode has reminded, so a tilt that
+            # became sustained during the cooldown still reminds once the cooldown ends (D-016).
+            if self.detector.phase == PHASE_SUSTAINED and not self.detector.reminder_triggered:
                 direction = self.detector.direction
                 decision = self.reminders.evaluate(
                     timestamp=t,

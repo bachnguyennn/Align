@@ -1,8 +1,9 @@
 import Foundation
 import AlignCore
 
-/// Reminder cooldown policy. `PostureMonitor` calls `evaluate` once per episode, on the update
-/// where the tilt becomes sustained, so there is never more than one reminder per episode.
+/// Reminder cooldown policy. `PostureMonitor` calls `evaluate` on each sustained update until the
+/// episode has reminded, so there is never more than one reminder per episode and a tilt that
+/// became sustained during the cooldown reminds once the cooldown ends (D-016).
 /// A reminder is given if none was given yet, or at least `cooldown` seconds have passed since
 /// the last one. A timestamp earlier than the last reminder (clock base changed) also allows one.
 /// Mirrors `align_reference/reminder.py`.
