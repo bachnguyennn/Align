@@ -1,0 +1,89 @@
+# Align sync server configuration. Every deploy-specific value comes from an environment variable;
+# the defaults are for local development only (docker-compose.yml / a local PostgreSQL).
+spring:
+  application:
+    name: align-server
+  main:
+    banner-mode: off
+  datasource:
+    # JDBC URL, e.g. jdbc:postgresql://db:5432/align (not the postgres:// form).
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/align}
+    username: ${DATABASE_USERNAME:align}
+    password: ${DATABASE_PASSWORD:align}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  mvc:
+    problemdetails:
+      enabled: true
+    log-request-details: false
+  jackson:
+    # Strict input: unknown fields, scalar coercion ("12" for 12, 1.5 for an integer) and
+    # duplicate keys are rejected instead of silently accepted.
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-null-for-primitives: true
+      accept-float-as-int: false
+      fail-on-trailing-tokens: true
+    mapper:
+      allow-coercion-of-scalars: false
+    parser:
+      strict-duplicate-detection: true
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-exception: false
+    include-binding-errors: never
+  tomcat:
+    # Request bodies are capped by RequestSizeLimitFilter (align.limits.max-request-bytes).
+    max-swallow-size: 1MB
+    max-http-form-post-size: 0
+
+management:
+  endpoints:
+    access:
+      default: none
+    web:
+      base-path: /api/v1
+      exposure:
+        include: health
+  endpoint:
+    health:
+      access: read-only
+      show-details: never
+      show-components: never
+  info:
+    env:
+      enabled: false
+
+align:
+  # Largest accepted request body in bytes; bigger bodies get 413. The other limits are part of
+  # the API contract and fixed in ApiLimits.java.
+  max-request-bytes: ${ALIGN_MAX_REQUEST_BYTES:524288}
+
+logging:
+  level:
+    root: INFO
+    # Never raise these to DEBUG/TRACE in production: they can print request details and SQL
+    # parameters (payload contents).
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
