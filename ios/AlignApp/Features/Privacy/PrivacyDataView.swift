@@ -21,6 +21,11 @@ struct PrivacyDataView: View {
                     text: "Head motion from your AirPods is analyzed on this iPhone as it arrives. Raw motion data is not saved and never leaves the device."
                 )
                 privacyRow(
+                    systemImage: "record.circle",
+                    title: "Motion recordings only if you ask",
+                    text: "Diagnostics can record raw head motion for tuning, only when you start it. The file stays on this iPhone unless you share it yourself and is deleted when you leave Diagnostics."
+                )
+                privacyRow(
                     systemImage: "icloud.slash",
                     title: "No account, no uploads",
                     text: "Align has no account and sends nothing to a server."
