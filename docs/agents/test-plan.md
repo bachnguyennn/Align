@@ -29,6 +29,7 @@ reminder cooldown 300 s, max sample gap 1 s. If the defaults change, update the 
 |---|---|---|---|
 | `hygiene` | ubuntu-24.04 | CRLF check, generated `.xcodeproj` not tracked, shellcheck | — |
 | `python` | ubuntu-24.04, Python 3.12 | `pip install -r analytics/requirements.txt`, `pytest analytics/experiments` | `analytics/experiments` absent |
+| `java` | ubuntu-24.04, Temurin 21 (`setup-java`, Maven cache) | `./mvnw -B -ntp verify` in `analytics/align-tools` (JUnit: pipeline, fixture replay + Python parity, generator, evaluation); test count as a notice | — |
 | `swift-package` | macos-15, Xcode 16.4 | `swift build --build-tests`, `swift test`, iOS Simulator build of `AlignKit-Package` | — |
 | `swift-linux` | `swift:5.10-jammy` container | `swift build --build-tests`, `swift test` (`continue-on-error`) | — |
 | `ios-app` | macos-15, Xcode 16.4 | `xcodegen generate`, `xcodebuild build`, `xcodebuild test` on the newest available iPhone simulator | `ios/project.yml` absent |
