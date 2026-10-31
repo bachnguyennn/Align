@@ -1,0 +1,13 @@
+# Decision log
+
+| ID | Date | Decision | Rationale | Owner |
+|---|---|---|---|---|
+| D-001 | 2026-10-31 | Monorepo lives at the repository root (`FixMySpine`), not in a nested `align/` folder. | The repo exists only for this app; nesting adds a path level for no benefit. | Lead |
+| D-002 | 2026-10-31 | Swift code is split into a local Swift package `ios/AlignKit` (AlignCore, PostureDetection, Sensors) plus an app target. | Lets the core logic be tested with `swift test` without the app, and enforces module boundaries. Replaces the flat `ios/Core`, `ios/Sensors`, `ios/PostureDetection` folders in the brief. | Lead |
+| D-003 | 2026-10-31 | The Xcode project is generated with XcodeGen from `ios/project.yml` and not committed. | Hand-editing `.pbxproj` without Xcode is error-prone; development happens on Windows and CI runs on GitHub macOS runners. | Lead |
+| D-004 | 2026-10-31 | iOS 17 minimum; SwiftUI + Observation + SwiftData + Swift Charts; XCTest for tests. | Modern native stack with no third-party dependencies; XCTest runs on all Xcode versions in CI. | Lead |
+| D-005 | 2026-10-31 | Tilt is estimated from the head-frame gravity direction relative to a calibrated baseline gravity vector, not from Euler angles or raw attitude comparison. | Excludes heading by construction, avoids gimbal lock and angle wrap, and keeps stored baselines valid across sessions despite the arbitrary heading reference. | Lead (Algorithm may challenge with evidence) |
+| D-006 | 2026-10-31 | Detection is rules-based (smoothing, thresholds, hysteresis, duration, cooldown). No ML in Phase 1. | Brief requirement; ML only with evidence it beats the baseline. | Lead |
+| D-007 | 2026-10-31 | Only sustained tilts are persisted as PostureEvents; raw motion is never persisted by default. | Data minimization. | Lead |
+| D-008 | 2026-10-31 | Phase 2 (backend/analytics) is deferred; the Backend and Data agents are not started this session. | User chose to build Phase 0 + 1 first. | User |
+| D-009 | 2026-10-31 | Commits are authored only by the repository owner; no AI attribution trailers. Agents commit on their own branches; the Lead merges to `main` and pushes. | User requirement. | User |
