@@ -33,3 +33,15 @@ compiled or run is at most `in review`.
 | Q-03 | Test plan incl. device protocol (disconnects, permissions, cooldown, battery) | QA | — | in review | `docs/agents/test-plan.md` | Review |
 | Q-04 | Privacy review | QA | F-06 | in review (initial) | `docs/research/privacy-review.md` | Review |
 | B-*, D-* | Backend sync + analytics pipeline | Backend, Data | Phase 1 | deferred (D-008) | — | — |
+
+## Phase 2
+
+| ID | Task | Owner | Depends on | Status | Output | Verification |
+|---|---|---|---|---|---|---|
+| B-01 | Sync server v1: contract, device auth, sessions/events upsert, summary, settings | Backend | D-018 | done (154 tests on H2 and PostgreSQL 16 in CI, run 41246932183) | `server/`, `docs/agents/api-contracts.md` | CI `server` |
+| B-02 | Rate limiting (esp. `POST /devices`), token rotation | Backend | B-01 | todo | | |
+| B-03 | Deployment: host, TLS/HSTS, backups, monitoring, privacy policy, App Store label | Backend + Lead | B-02 | todo (needs user decisions) | | |
+| F-10 | Opt-in sync toggle, Keychain token, upload queue with per-row dirty flag | Frontend | B-01 | todo | | |
+| F-11 | Guided-nod calibration step, sample watchdog, Diagnostics motion recording (D-017) | Frontend | A-06 | todo | | |
+| A-06 | Nod axis calibration + spread quantile in Java and Swift, fixtures, evaluation, replay CLI (D-017) | Algorithm | D-017 | in progress | | |
+| Q-05 | Review privacy review §9 (server data) | QA | B-01 | todo | | |
