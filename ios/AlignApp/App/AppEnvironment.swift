@@ -29,6 +29,8 @@ final class AppEnvironment {
         self.sessionStore = sessionStore
         self.controller = controller
         sessionStore.closeUnfinishedSessions()
+        // A diagnostic recording left behind if the app was terminated mid-share (D-017 (d)).
+        MotionRecorder.removeFiles()
     }
 
     /// Real AirPods on device; the deterministic mock in the simulator or in demo mode.

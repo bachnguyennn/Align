@@ -219,6 +219,40 @@ extension CalibrationFailure {
     }
 }
 
+extension AxisCalibrationFailure {
+    /// Short heading for the nod result screen.
+    var title: String {
+        switch self {
+        case .noNodDetected, .inconsistentMotion:
+            return "Let's try that nod again"
+        case .sensorInterrupted:
+            return "The nod didn't finish"
+        case .needsBaseline:
+            return "Neutral position needed first"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .noNodDetected:
+            return "We didn't see a nod — try a slightly bigger, slower nod."
+        case .inconsistentMotion:
+            return "That looked like a sideways tilt or turn — nod straight down and up."
+        case .sensorInterrupted:
+            return "The AirPods connection was interrupted during the nod. Check that both AirPods are in and connected, then try again."
+        case .needsBaseline:
+            return "The nod is measured from your neutral position. Calibrate your neutral position first, then do the nod."
+        }
+    }
+}
+
+extension HeadAxisConvention {
+    /// "Learned from your nod" or "Default" for Settings and Diagnostics.
+    static func sourceTitle(learned: Bool) -> String {
+        learned ? "Learned from your nod" : "Default"
+    }
+}
+
 extension MockScenario {
     /// "gradualForwardSlouch" → "Gradual forward slouch".
     var displayName: String {

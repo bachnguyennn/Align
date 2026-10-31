@@ -133,4 +133,112 @@ Diagnostics to move the simulated head with sliders or play scenarios.
   any disagreement.
 - History charts recompute from all sessions on each render. That is fine for months of data, but
   might need a date-filtered `@Query` later.
-- Not done: no UI tests, no snapshot tests, no localization, no developer motion recording.
+- Not done: no UI tests, no snapshot tests, no localization, no developer motion recording
+  (added in F-11 below).
+
+# F-11: guided nod, sample watchdog, motion recording (D-017 (a) app side, (c), (d); D-020 UI)
+
+Branch: `worktree-agent-aee764ee32de27b27`. Status: **written, not compiled** (Windows, no Swift
+toolchain). `ios/AlignKit` is untouched; the app uses `beginAxisCalibration()`,
+`cancelAxisCalibration()`, `clearLearnedAxes()`, `PostureUpdate.axisCalibrationOutcome`,
+`NeutralBaseline.learnedAxes` and `AxisCalibrationService.signedYawDegrees` as they are on `main`.
+No `project.yml` change: new files sit in the existing `AlignApp` / `AlignAppTests` folders, and
+the tests need only `AlignCore` (the mock provider comes from `AppEnvironment.makeProvider`).
+
+## What changed
+
+| Area | Files | Notes |
+|---|---|---|
+| Nod step | `Features/Calibration/CalibrationView.swift` | After "Neutral position saved": step 2 of 2 card, `NodIllustration` (head in profile, `PhaseAnimator` nod; with Reduce Motion a static upright head plus a faint nodded copy), Start the nod, linear progress while watching, Skip. Results: All set / per-failure title and message, Try the nod again (or Calibrate neutral position for `.needsBaseline`) and Skip. VoiceOver announcements for each phase; the illustration is one labelled image element. The instructions screen (Settings → Neutral position) has a **Tilt axes** card: "Learned from your nod" / "Default", Redo nod (Do the nod when default) and Use default axes. |
+| Controller | `App/MonitoringController.swift` | `AxisCalibrationPhase` (idle, waitingForSensor, inProgress, succeeded, failed, skipped); `startAxisCalibration`, `cancelAxisCalibration`, `skipAxisCalibration`, `useDefaultAxes`; `isCalibrating` = neutral or nod (blocks sessions as before). Every change of the monitor's baseline is written to `SettingsStore.baseline` at once: neutral success stores the new baseline (which has no learned axes); nod success stores `monitor.baseline` with `learnedAxes` (version + 1); Use default axes stores it after `clearLearnedAxes()`; skip changes nothing. `effectiveAxes`, `hasLearnedAxes`, `learnedAxisYawDegrees`. `handle(_:)` is now internal so tests feed events directly. |
+| Watchdog | `App/SampleWatchdog.swift` | Armed by the first sample while streaming and `.connected`; ticks every 0.25 s through an injected `WatchdogTimer` (the real one is a main-actor `Task` that exists only while armed); fires once when no sample arrived for `maxSampleGap` + 0.5 s by an injected clock (arrival time, not sample timestamps), then disarms until the next sample. The controller then runs the existing interrupt path (`interruptMonitor()`: open episode closed and persisted, calibration or nod fails with `.sensorInterrupted`), clears the tilt and sample, sets `isSampleStalled` and counts `sampleStallCount`. Disarmed on any connection change away from `.connected` and on stream stop. |
+| Recording | `Features/Diagnostics/MotionRecording.swift`, `DiagnosticsView.swift` | See below. |
+| Diagnostics | `Features/Diagnostics/DiagnosticsView.swift` | New "Tilt axes in use" section (source, effective forward/lateral axes, learned yaw vs default via `signedYawDegrees`), watchdog status and stall count under Sensor, Axis check kept (footer now says it always uses the default axes), Record motion section. |
+| Other | `SettingsView.swift`, `PrivacyDataView.swift`, `Formatting.swift`, `AppInfo.swift`, `AppEnvironment.swift` | Settings shows a "Tilt axes" row under Neutral position; Privacy & data mentions recordings; failure copy; version and model helpers; leftover recordings deleted at launch. |
+| Docs | `TESTING.md`, `.github/ISSUE_TEMPLATE/hardware-test.md`, `README.md`, `docs/research/privacy-review.md` §2, §5, §10 | Nod step, "Record a session for tuning", issue template rows for nod, yaw, stalls and recordings. |
+
+## UX copy for each nod outcome
+
+| Outcome | Title | Message |
+|---|---|---|
+| prompt | Step 2 of 2: one slow nod | "Now nod slowly — chin down about 20–30°, then back up." plus why, and the 8 s window |
+| `.succeeded` | All set | "Your neutral position and your nod are saved. Align now measures tilt along the axes learned from your nod." (redo: "Your nod is saved. …") |
+| `.noNodDetected` | Let's try that nod again | "We didn't see a nod — try a slightly bigger, slower nod." |
+| `.inconsistentMotion` | Let's try that nod again | "That looked like a sideways tilt or turn — nod straight down and up." |
+| `.sensorInterrupted` | The nod didn't finish | "The AirPods connection was interrupted during the nod. Check that both AirPods are in and connected, then try again." |
+| `.needsBaseline` | Neutral position needed first | "The nod is measured from your neutral position. Calibrate your neutral position first, then do the nod." (button: Calibrate neutral position) |
+| skipped | Calibrated | "Your neutral position is saved (calibration N). Align is using the default axes; you can add the nod any time in Settings → Neutral position." |
+
+## Motion recording (D-017 (d))
+
+- Diagnostics → Record motion: explanation first (raw head motion, only for this export, stays on
+  this iPhone unless shared, deleted when leaving the screen, never uploaded), length 30 s, 1 min
+  or 2 min, optional note (at most 280 characters, "no names" hint), Start recording (needs a
+  connected stream). While recording: progress, sample count, **Calibrate neutral now** and
+  **Nod now** (so a calibration can be captured in the file; leaving Diagnostics cancels one
+  started there), Stop. Then: Share recording (`ShareLink(item: URL)`), Delete recording.
+- File: the documented recording format, written by hand (`MotionRecordingEncoder`) so `q` has 4
+  and `g` 5 decimals (`r` 4, `t` 6) and keys keep the documented order. `config` is the full
+  configuration with the documented keys only; **the D-020 drift keys are left out** because
+  `PostureConfiguration.withOverrides` in align-tools rejects unknown keys (open question 1).
+  `baseline` and `config` are those at the start; `actions` are stamped 1 ms after the last
+  recorded sample so replay applies them at the same point. `recording`: `appVersion`
+  (`CFBundleShortVersionString (CFBundleVersion)`), `device` (`uname` machine, or
+  `SIMULATOR_MODEL_IDENTIFIER`), `headphones` = `"unknown"` (or `"mock sensor (demo mode)"`),
+  `notes` (omitted when empty), `createdAt` (ISO 8601, UTC). File name
+  `yyyy-MM-dd-recording-HHmmss.json`.
+- Lifecycle: memory only while recording; then one file in `tmp/AlignMotionRecordings/` (complete
+  file protection). Deleted on leaving Diagnostics, on a new recording, on Delete and at launch.
+  Stops (keeping what was captured) on disconnect, stream stop or background; `.inactive` keeps
+  recording. No SwiftData or UserDefaults writes (tested).
+
+## Tests added (`ios/AlignAppTests`)
+
+- `SampleWatchdogTests`: fires once after 1.5 s of silence (not at 1.4 s, not again), resumes on
+  samples; not armed without `.connected` or without streaming; stops with the connection and
+  with the stream; closes and persists the open sustained episode while the session keeps running.
+- `AxisCalibrationFlowTests` (synthetic nods with an earbud yawed 20°/15°/−15°): success stores
+  `learnedAxes` (reloaded from UserDefaults) and the yaw shown is 20 ± 3°; skip keeps nil; skip
+  during the nod cancels it; Use default axes clears and keeps the version; neutral
+  recalibration clears (version 3); still head gives `.noNodDetected`; a sideways tilt gives
+  `.inconsistentMotion`; no baseline gives `.needsBaseline`; a disconnect gives
+  `.sensorInterrupted`.
+- `MotionRecordingEncoderTests`: decodes the JSON back: required keys, no
+  `expected`/`reference`/`truth`/`generator`, config keys ⊆ documented keys, axes, null
+  `maxProcessingRateHz`, baseline with learned axes, actions, sample count and rounding, note
+  escaping, empty notes omitted, null baseline, empty sample list, number and string helpers.
+- `MotionRecorderTests`: end to end through the controller (125 samples, a `beginAxisCalibration`
+  action right after a sample, no SwiftData rows, a new recording deletes the old file, discard
+  deletes the folder); stops at the chosen length, on disconnect, on background (not on
+  inactive); needs a connected stream; no samples gives a failure and no file; leftover cleanup.
+
+## Least sure it compiles (check these CI annotations first)
+
+1. `PhaseAnimator([0.0, 25]) { angle in … } animation: { _ in Animation.easeInOut(…) }` in
+   `CalibrationView.swift` (iOS 17 API, multiple trailing closures).
+2. `ShareLink(item: file.url) { Label(…) }` in `DiagnosticsView.swift`.
+3. `AppInfo.deviceModelIdentifier`: `withUnsafeBytes(of: info.machine)` with
+   `prefix(while:)` and `String(decoding:as:)`.
+4. `MotionRecorder` (`@Observable` with `nonisolated static` members and an `if let clock` init)
+   and `SampleWatchdog.onStall: (@MainActor () -> Void)?`.
+5. The `switch` over `Unicode.Scalar` with string-literal cases in `MotionRecordingEncoder.string`.
+6. Test harness: `ControllerHarness` builds a second `MonitoringController` over an in-memory
+   `AppEnvironment` (the environment's own controller is unused); tests call the now-internal
+   `handle(_:)` synchronously, so the mock provider's real-time stream is never consumed.
+
+## Open questions for the Lead
+
+1. **D-020 keys in recordings**: align-tools' `withOverrides` throws on
+   `calibrationMaxDriftDegrees` / `calibrationDriftWindow` (not in its key table on `main`), so
+   recordings omit them. Once the Java side knows them, add both to
+   `MotionRecordingEncoder.configKeys` and to the README key list.
+2. **Release builds**: the recorder is not behind `#if DEBUG` (D-017 puts it in Diagnostics for
+   testers). privacy-review R-02 said debug-only; §10 now describes the controls instead. Keep
+   it, or hide it behind a developer toggle for an App Store build?
+3. `data-contracts.md` still says "a developer-only motion recording for fixtures may exist behind
+   an explicit toggle"; it should point to D-017 (d). I did not edit the Lead's contract.
+4. On a device, check that presenting the share sheet does not fire Diagnostics' `onDisappear`
+   (which deletes the file). SwiftUI does not call it for sheet presentations as far as I know,
+   but that is unverified.
+5. Should a watchdog stall be visible beyond "No sensor data" (for example a dashboard banner)?
+   Today it shows only as the posture state and in Diagnostics.

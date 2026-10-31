@@ -36,6 +36,19 @@ enum CalibrationPhase: Equatable {
     case failed(CalibrationFailure)
 }
 
+/// The guided-nod step that follows a neutral calibration (D-017 (a)).
+enum AxisCalibrationPhase: Equatable {
+    case idle
+    /// Nod requested, waiting for samples.
+    case waitingForSensor
+    case inProgress(progress: Double)
+    /// The baseline now carries these learned axes (stored).
+    case succeeded(HeadAxisConvention)
+    case failed(AxisCalibrationFailure)
+    /// The user skipped the nod; the default axes stay in use.
+    case skipped
+}
+
 enum SensorSource: Equatable {
     case airPods
     case demo
@@ -76,6 +89,11 @@ final class MonitoringController {
     private(set) var lastFinishedSession: SessionAccumulator? = nil
     private(set) var lastReminderAt: Date? = nil
     private(set) var calibrationPhase: CalibrationPhase = .idle
+    private(set) var axisCalibrationPhase: AxisCalibrationPhase = .idle
+    /// True after the sample watchdog interrupted a silent stream, until the next sample.
+    private(set) var isSampleStalled = false
+    /// How many times the watchdog fired since launch (shown in Diagnostics).
+    private(set) var sampleStallCount = 0
 
     private var demoScenarioStorage: MockScenario = .manual
     private var demoForwardStorage: Double = 0
@@ -84,9 +102,12 @@ final class MonitoringController {
     // MARK: Dependencies and internals
 
     let settings: SettingsStore
+    /// Opt-in diagnostic motion recording (D-017 (d)); fed from the sample stream.
+    let recorder: MotionRecorder
     private let notifier: ReminderNotifier
     private let store: SessionStore
     private let makeProvider: @MainActor (Bool) -> any SensorProvider
+    private let sampleWatchdog: SampleWatchdog
 
     @ObservationIgnored private var provider: any SensorProvider
     @ObservationIgnored private var monitor: PostureMonitor
@@ -101,17 +122,24 @@ final class MonitoringController {
     /// How often running-session totals are written to SwiftData (seconds of sample time).
     private static let persistInterval: TimeInterval = 15
 
-    /// - Parameter makeProvider: builds the sensor provider; the argument is the demo-mode flag.
+    /// - Parameters:
+    ///   - makeProvider: builds the sensor provider; the argument is the demo-mode flag.
+    ///   - sampleWatchdog: detects a connected stream that went silent; a real-time one when nil.
+    ///   - recorder: the diagnostic motion recorder; one writing to the temporary folder when nil.
     init(
         settings: SettingsStore,
         notifier: ReminderNotifier,
         store: SessionStore,
-        makeProvider: @escaping @MainActor (Bool) -> any SensorProvider
+        makeProvider: @escaping @MainActor (Bool) -> any SensorProvider,
+        sampleWatchdog: SampleWatchdog? = nil,
+        recorder: MotionRecorder? = nil
     ) {
         self.settings = settings
         self.notifier = notifier
         self.store = store
         self.makeProvider = makeProvider
+        self.sampleWatchdog = sampleWatchdog ?? SampleWatchdog()
+        self.recorder = recorder ?? MotionRecorder()
         let initialProvider = makeProvider(settings.app.demoModeEnabled)
         self.provider = initialProvider
         let initialMonitor = PostureMonitor(configuration: settings.configuration, baseline: settings.baseline)
@@ -126,19 +154,58 @@ final class MonitoringController {
         settings.onDemoModeChange = { [weak self] enabled in
             self?.switchProvider(demoMode: enabled)
         }
+        self.sampleWatchdog.onStall = { [weak self] in
+            self?.handleSampleStall()
+        }
     }
 
     // MARK: Derived state
 
+    /// The stored baseline. Every change of the monitor's baseline is written here at once, so
+    /// it always equals `PostureMonitor.baseline`.
     var baseline: NeutralBaseline? { settings.baseline }
 
+    /// A neutral calibration (or the guided nod after it) is running.
     var isCalibrating: Bool {
+        isNeutralCalibrating || isAxisCalibrating
+    }
+
+    var isNeutralCalibrating: Bool {
         switch calibrationPhase {
         case .waitingForSensor, .inProgress:
             return true
         case .idle, .succeeded, .failed:
             return false
         }
+    }
+
+    var isAxisCalibrating: Bool {
+        switch axisCalibrationPhase {
+        case .waitingForSensor, .inProgress:
+            return true
+        case .idle, .succeeded, .failed, .skipped:
+            return false
+        }
+    }
+
+    /// Axes the monitor measures tilt with: learned from the nod, else the default convention.
+    var effectiveAxes: HeadAxisConvention {
+        baseline?.learnedAxes ?? settings.configuration.axes
+    }
+
+    var hasLearnedAxes: Bool {
+        baseline?.learnedAxes != nil
+    }
+
+    /// Signed angle of the learned forward axis from the default one, both projected onto the
+    /// baseline plane (positive toward the default lateral axis). Nil without learned axes.
+    var learnedAxisYawDegrees: Double? {
+        guard let baseline, let learned = baseline.learnedAxes else { return nil }
+        return AxisCalibrationService.signedYawDegrees(
+            forwardAxis: learned.forwardAxis,
+            baselineGravity: baseline.gravity,
+            reference: settings.configuration.axes
+        )
     }
 
     var canStartSession: Bool {
@@ -278,27 +345,89 @@ final class MonitoringController {
 
     // MARK: Calibration
 
-    func startCalibration() {
+    /// Starts a neutral calibration. A new baseline never has learned axes (each earbud fit is
+    /// new, D-017), so success also clears them in storage.
+    /// - Parameter client: the screen that needs the sensor for it.
+    func startCalibration(client: SensorClient = .calibration) {
         if sessionState == .running {
             pauseSession()
         }
-        acquireSensor(.calibration)
-        monitor.beginCalibration()
+        acquireSensor(client)
+        // Also cancels a nod in progress (without an outcome).
+        perform(.beginCalibration)
+        axisCalibrationPhase = .idle
         calibrationPhase = connectionState == .connected ? .inProgress(progress: 0) : .waitingForSensor
     }
 
+    /// Cancels a neutral calibration or a nod in progress. The stored baseline is unchanged.
     func cancelCalibration() {
         guard isCalibrating else { return }
-        monitor.cancelCalibration()
-        calibrationPhase = .idle
+        if isNeutralCalibrating {
+            perform(.cancelCalibration)
+            calibrationPhase = .idle
+        }
+        if isAxisCalibrating {
+            perform(.cancelAxisCalibration)
+            axisCalibrationPhase = .idle
+        }
         postureState = monitor.state
     }
 
-    /// Clears a finished calibration result so the screen shows its instructions again.
+    /// Clears finished calibration and nod results so the screen shows its instructions again.
     func acknowledgeCalibrationResult() {
-        if !isCalibrating {
+        if !isNeutralCalibrating {
             calibrationPhase = .idle
         }
+        if !isAxisCalibrating {
+            axisCalibrationPhase = .idle
+        }
+    }
+
+    /// Starts the guided nod (D-017 (a)). Needs a baseline; without one the phase becomes
+    /// `.failed(.needsBaseline)` at once.
+    func startAxisCalibration(client: SensorClient = .calibration) {
+        guard monitor.baseline != nil else {
+            axisCalibrationPhase = .failed(.needsBaseline)
+            return
+        }
+        if sessionState == .running {
+            pauseSession()
+        }
+        if isNeutralCalibrating {
+            // beginAxisCalibration cancels it without an outcome.
+            calibrationPhase = .idle
+        }
+        acquireSensor(client)
+        perform(.beginAxisCalibration)
+        axisCalibrationPhase = connectionState == .connected ? .inProgress(progress: 0) : .waitingForSensor
+    }
+
+    func cancelAxisCalibration() {
+        guard isAxisCalibrating else { return }
+        perform(.cancelAxisCalibration)
+        axisCalibrationPhase = .idle
+        postureState = monitor.state
+    }
+
+    /// Skips the nod after a neutral calibration: the baseline keeps `learnedAxes == nil`, so
+    /// the default axes stay in use.
+    func skipAxisCalibration() {
+        if isAxisCalibrating {
+            perform(.cancelAxisCalibration)
+            postureState = monitor.state
+        }
+        axisCalibrationPhase = .skipped
+    }
+
+    /// Settings → "Use default axes": drops the learned axes from the baseline and stores it.
+    func useDefaultAxes() {
+        guard monitor.baseline?.learnedAxes != nil else { return }
+        if isAxisCalibrating {
+            perform(.cancelAxisCalibration)
+            axisCalibrationPhase = .idle
+        }
+        perform(.clearLearnedAxes)
+        settings.baseline = monitor.baseline
     }
 
     /// Deletes the stored baseline. Any session is stopped first.
@@ -306,14 +435,48 @@ final class MonitoringController {
         if sessionState != .idle {
             stopSession()
         }
-        if isCalibrating {
+        if isNeutralCalibrating {
             monitor.cancelCalibration()
+        }
+        if isAxisCalibrating {
+            monitor.cancelAxisCalibration()
         }
         settings.baseline = nil
         monitor = PostureMonitor(configuration: settings.configuration, baseline: nil)
         latestTilt = nil
         postureState = monitor.state
         calibrationPhase = .idle
+        axisCalibrationPhase = .idle
+    }
+
+    // MARK: Diagnostic motion recording (D-017 (d))
+
+    /// Recording needs a connected, streaming sensor (the Diagnostics screen holds it).
+    var canStartRecording: Bool {
+        isStreaming && connectionState == .connected && !recorder.isRecording
+    }
+
+    /// Starts recording raw samples, the current baseline and configuration, and calibration
+    /// actions, for `length`. Kept in memory, then written to a temporary file to share.
+    func startRecording(length: RecordingLength, notes: String) {
+        guard canStartRecording else { return }
+        let metadata = RecordingMetadata(
+            appVersion: AppInfo.versionString,
+            device: AppInfo.deviceModelIdentifier,
+            headphones: sensorSource == .demo ? "mock sensor (demo mode)" : "unknown",
+            notes: notes,
+            createdAt: Date()
+        )
+        recorder.start(length: length, metadata: metadata, configuration: monitor.configuration, baseline: monitor.baseline)
+    }
+
+    func stopRecording() {
+        recorder.stop(.stoppedByUser)
+    }
+
+    /// Cancels a recording and deletes its file (leaving Diagnostics, new recording).
+    func discardRecording() {
+        recorder.discard()
     }
 
     // MARK: Data management
@@ -342,10 +505,16 @@ final class MonitoringController {
         syncActiveSession()
         store.save()
         if stopSensor {
-            if isCalibrating {
-                // Don't report a background transition as a sensor failure.
+            // A recording never continues in the background (D-017 (d)).
+            recorder.stop(.appBackgrounded)
+            // Don't report a background transition as a sensor failure.
+            if isNeutralCalibrating {
                 monitor.cancelCalibration()
                 calibrationPhase = .idle
+            }
+            if isAxisCalibrating {
+                monitor.cancelAxisCalibration()
+                axisCalibrationPhase = .idle
             }
             stopStreaming()
             postureState = monitor.state
@@ -395,6 +564,9 @@ final class MonitoringController {
 
     private func stopStreaming() {
         guard isStreaming else { return }
+        recorder.stop(.sensorStopped)
+        sampleWatchdog.disarm()
+        isSampleStalled = false
         isStreaming = false
         streamGeneration += 1
         streamTask?.cancel()
@@ -427,7 +599,8 @@ final class MonitoringController {
         }
     }
 
-    private func handle(_ event: SensorEvent) {
+    /// Handles one provider event. Called by the stream task (internal so tests can feed events).
+    func handle(_ event: SensorEvent) {
         switch event {
         case .connectionChanged(let state):
             let wasConnected = connectionState == .connected
@@ -435,6 +608,14 @@ final class MonitoringController {
                 connectionState = state
             }
             refreshProviderStatus()
+            if state != .connected {
+                sampleWatchdog.disarm()
+                if isSampleStalled {
+                    isSampleStalled = false
+                }
+                // Recordings stop on disconnect (D-017 (d)); what was captured can still be shared.
+                recorder.stop(.disconnected)
+            }
             // Interrupt on any move away from a streaming state (.waitingForHeadphones, .failed,
             // .idle, .unavailable) so open episodes close and timers reset.
             if state != .connected && (wasConnected || lastSampleTimestamp != nil) {
@@ -447,15 +628,58 @@ final class MonitoringController {
             latestSample = sample
             rateMeter.record(sample.timestamp)
             lastSampleTimestamp = sample.timestamp
+            if isSampleStalled {
+                isSampleStalled = false
+            }
+            if isStreaming && connectionState == .connected {
+                sampleWatchdog.sampleArrived(maxSampleGap: monitor.configuration.maxSampleGap)
+            }
+            recorder.append(sample)
             let update = monitor.process(sample)
             apply(update, fromSample: true)
         }
     }
 
+    /// The watchdog saw no sample for longer than `maxSampleGap` while connected (D-017 (c)):
+    /// interrupt like a disconnect, so open episodes close and no stale tilt is shown. The next
+    /// sample resumes normally (the monitor starts from a fresh state).
+    private func handleSampleStall() {
+        guard isStreaming, connectionState == .connected else { return }
+        sampleStallCount += 1
+        isSampleStalled = true
+        interruptMonitor()
+        lastSampleTimestamp = nil
+        latestTilt = nil
+        latestSample = nil
+    }
+
     // MARK: Posture updates
+
+    /// Calls the monitor and notes the action in a running recording (replayable `actions`).
+    private func perform(_ action: RecordedActionType) {
+        switch action {
+        case .beginCalibration:
+            monitor.beginCalibration()
+        case .cancelCalibration:
+            monitor.cancelCalibration()
+        case .beginAxisCalibration:
+            monitor.beginAxisCalibration()
+        case .cancelAxisCalibration:
+            monitor.cancelAxisCalibration()
+        case .clearLearnedAxes:
+            monitor.clearLearnedAxes()
+        case .resetCooldown:
+            monitor.resetCooldown()
+        case .interrupt:
+            interruptMonitor()
+            return
+        }
+        recorder.record(action)
+    }
 
     private func interruptMonitor() {
         let timestamp = lastSampleTimestamp ?? ProcessInfo.processInfo.systemUptime
+        recorder.record(.interrupt)
         let update = monitor.interrupt(at: timestamp)
         apply(update, fromSample: false)
     }
@@ -467,7 +691,7 @@ final class MonitoringController {
             interruptMonitor()
         }
         if resetCooldown {
-            monitor.resetCooldown()
+            perform(.resetCooldown)
         }
         suppressedReminderWhileInactive = false
     }
@@ -500,14 +724,21 @@ final class MonitoringController {
 
         if let outcome = update.calibrationOutcome {
             handleCalibrationOutcome(outcome)
-        } else if case .calibrating(let progress) = update.state, isCalibrating {
+        } else if case .calibrating(let progress) = update.state, isNeutralCalibrating {
             calibrationPhase = .inProgress(progress: progress)
+        }
+
+        if let axisOutcome = update.axisCalibrationOutcome {
+            handleAxisCalibrationOutcome(axisOutcome)
+        } else if case .calibrating(let progress) = update.state, isAxisCalibrating {
+            axisCalibrationPhase = .inProgress(progress: progress)
         }
     }
 
     private func handleCalibrationOutcome(_ outcome: CalibrationOutcome) {
         switch outcome {
         case .succeeded(let newBaseline):
+            // A new neutral baseline has no learned axes: storing it also clears any old ones.
             settings.baseline = newBaseline
             calibrationPhase = .succeeded(newBaseline)
             if let session = activeSession {
@@ -516,6 +747,21 @@ final class MonitoringController {
             }
         case .failed(let reason):
             calibrationPhase = .failed(reason)
+        }
+    }
+
+    private func handleAxisCalibrationOutcome(_ outcome: AxisCalibrationOutcome) {
+        switch outcome {
+        case .succeeded(let axes):
+            // The monitor's baseline now carries the learned axes (version + 1): store exactly it.
+            settings.baseline = monitor.baseline
+            axisCalibrationPhase = .succeeded(axes)
+            if let session = activeSession, let version = monitor.baseline?.version {
+                session.calibrationVersion = version
+                store.save()
+            }
+        case .failed(let reason):
+            axisCalibrationPhase = .failed(reason)
         }
     }
 
