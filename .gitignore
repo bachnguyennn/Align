@@ -5,3 +5,8 @@ node_modules/
 .claude/settings.local.json
 .DS_Store
 Thumbs.db
+
+# AI assistant config and skills (kept local only)
+.claude/
+.agents/
+CLAUDE.md
