@@ -2,14 +2,13 @@ import SwiftUI
 import UIKit
 import AlignCore
 
-/// Headphones that expose head motion to apps. UNVERIFIED against the Sensor agent's feasibility
-/// research (docs/research/airpods-motion-feasibility.md, S-01) — reconcile before release.
+/// Example headphones with head tracking, per docs/research/airpods-motion-feasibility.md §3.
+/// Compatibility is decided at runtime (samples arrive), not by this list.
 enum SupportedHeadphones {
-    static let models: [String] = [
-        "AirPods Pro (all generations)",
+    static let examples: [String] = [
+        "AirPods Pro",
         "AirPods Max",
-        "AirPods (3rd generation) and later",
-        "Beats Fit Pro",
+        "AirPods (3rd generation or later)",
     ]
 }
 
@@ -48,13 +47,13 @@ struct PermissionsView: View {
             }
 
             Section {
-                ForEach(SupportedHeadphones.models, id: \.self) { model in
+                ForEach(SupportedHeadphones.examples, id: \.self) { model in
                     Label(model, systemImage: "airpodspro")
                 }
             } header: {
-                Text("Works with")
+                Text("Works with headphones that support head tracking, such as")
             } footer: {
-                Text("Requires iOS 17 or later on iPhone.")
+                Text("Requires iOS 17 or later on iPhone. If your headphones connect but Align shows no motion, they may not share head-tracking data with apps.")
             }
 
             Section("If something isn't working") {

@@ -93,6 +93,34 @@ final class AppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testResetToDefaultsKeepsBaseline() {
+        let suite = "align.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = SettingsStore(defaults: defaults)
+        store.preset = .strict
+        store.app.hapticsEnabled = false
+        store.baseline = NeutralBaseline(gravity: Vector3(x: 0, y: 0, z: -1), capturedAt: Date(), sampleCount: 250, version: 1)
+        store.resetToDefaults()
+        XCTAssertEqual(store.preset, .balanced)
+        XCTAssertTrue(store.app.hapticsEnabled)
+        XCTAssertNotNil(store.baseline)
+    }
+
+    @MainActor
+    func testStoredAxesAreReplacedByPackageDefault() throws {
+        let suite = "align.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var stale = PostureConfiguration.default
+        stale.axes = HeadAxisConvention(forwardAxis: Vector3(x: 0, y: 0, z: 1), lateralAxis: Vector3(x: 0, y: 1, z: 0))
+        defaults.set(try JSONEncoder().encode(stale), forKey: SettingsStore.Keys.configuration)
+        XCTAssertEqual(SettingsStore(defaults: defaults).configuration.axes, HeadAxisConvention.airPodsDefault)
+    }
+
+    @MainActor
     func testConfigurationChangeCallbackFires() {
         let suite = "align.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
