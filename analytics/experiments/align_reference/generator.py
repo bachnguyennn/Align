@@ -12,10 +12,13 @@ Model (all angles in degrees):
 - Earbud mounting offset (`mount_pitch`, `mount_roll`) between head frame and device frame.
 - Sensor noise: white rotation noise of `sensor_noise_deg` per axis on the gravity vector.
 
-Frames: world is Z-up (Core Motion xArbitraryZVertical), gravity (0, 0, -1) g. Head frame axes
-follow HeadAxisConvention.airPodsDefault: +x = flexion axis (positive rotation = chin to chest),
-+y = lateral-bend axis (positive = right ear down), +z up at neutral. Device attitude
-q = Yaw(heading) * Tilt(forward*x + lateral*y) * Mount, gravity in device frame = q* (0,0,-1) q.
+Frames: world is Z-up (Core Motion xArbitraryZVertical), gravity (0, 0, -1) g. Head frame (D-011,
+unverified on hardware): +X right ear, +Y nose, +Z up at neutral. Axes are never hard-coded: they
+come from the fixture's configuration (`forwardAxis`/`lateralAxis`, written explicitly into every
+fixture and equal to the AlignCore default (-1,0,0)/(0,1,0)). Device attitude
+q = Yaw(heading) * Tilt(forward*forwardAxis + lateral*lateralAxis) * Mount (pitch about
+forwardAxis, roll about lateralAxis); gravity in the device frame = q* (0,0,-1) q
+(see `pose.py`).
 
 Run `python -m align_reference.generator` (from analytics/experiments) to rewrite
 shared/fixtures/motion/*.json. Output is deterministic for a given numpy version and seed.
@@ -35,16 +38,18 @@ import numpy as np
 from . import __version__
 from .fixtures import FIXTURE_DIR, SCHEMA_VERSION, reference_block, replay
 from .geometry import (
+    Quat,
     Vec3,
     gravity_in_head_frame,
     normalized,
-    quat_from_axis_angle,
     quat_from_rotation_vector,
-    quat_mul,
-    quat_normalized,
     quat_rotate,
 )
-from .model import BACKWARD, FORWARD, LEFT, RIGHT, PostureConfiguration
+from .model import BACKWARD, FORWARD, LEFT, RIGHT, HeadAxisConvention, PostureConfiguration
+from .pose import pose_attitude
+
+DEFAULT_AXES = HeadAxisConvention()
+AXES_CONFIG = {"forwardAxis": list(DEFAULT_AXES.forward_axis), "lateralAxis": list(DEFAULT_AXES.lateral_axis)}
 
 RAD = math.pi / 180.0
 GENERATOR_SCRIPT = "analytics/experiments/align_reference/generator.py"
@@ -67,7 +72,7 @@ class ScenarioSpec:
     duration: float
     sample_rate_hz: float = 25.0
     start_timestamp: float = 0.0
-    config: Dict = field(default_factory=dict)
+    config: Dict = field(default_factory=lambda: dict(AXES_CONFIG))
     actions: List[Dict] = field(default_factory=list)
     keyframes: List[Tuple[float, float, float]] = field(default_factory=lambda: [(0.0, 0.0, 0.0)])
     glances: List[Glance] = field(default_factory=list)
@@ -80,6 +85,7 @@ class ScenarioSpec:
     head_turn_interval: float = 15.0
     mount_pitch: float = 8.0
     mount_roll: float = -3.0
+    timestamp_jitter: float = 0.004  # std of delivery-time jitter, seconds
     expected: Callable[["ScenarioSpec"], Dict] = None  # type: ignore[assignment]
 
     # Relative-time helpers (seconds since the fixture's start).
@@ -190,10 +196,9 @@ def synthesize(spec: ScenarioSpec) -> Tuple[dict, dict]:
     heading += _bumps(rng, rel_all, spec.head_turn_interval, 30.0, 45.0, (1.0, 3.0), [])
     noise = rng.normal(0.0, spec.sensor_noise_deg * RAD, (n_total, 3))
 
-    mount = quat_mul(
-        quat_from_axis_angle(Vec3(1.0, 0.0, 0.0), spec.mount_pitch * RAD),
-        quat_from_axis_angle(Vec3(0.0, 1.0, 0.0), spec.mount_roll * RAD),
-    )
+    # Delivery jitter: real AirPods deliver ~25 Hz with jitter; the pipeline must use timestamps.
+    jitter = np.clip(rng.normal(0.0, spec.timestamp_jitter, n_total), -0.3 * dt, 0.3 * dt)
+    axes = PostureConfiguration.from_overrides(spec.config).axes
 
     samples = []
     truth_t, truth_f, truth_l = [], [], []
@@ -204,15 +209,14 @@ def synthesize(spec: ScenarioSpec) -> Tuple[dict, dict]:
         f_true, l_true = truth_pose(spec, rel)
         f = f_true + sway_f[i] + micro_f[i]
         l = l_true + sway_l[i] + micro_l[i]
-        tilt = quat_from_rotation_vector(Vec3(f * RAD, l * RAD, 0.0))
-        yaw = quat_from_axis_angle(Vec3(0.0, 0.0, 1.0), float(heading[i]) * RAD)
-        q = quat_normalized(quat_mul(quat_mul(yaw, tilt), mount))
+        q = pose_attitude(f, l, float(heading[i]), spec.mount_pitch, spec.mount_roll, axes)
         g = gravity_in_head_frame(q)
         g = normalized(quat_rotate(quat_from_rotation_vector(Vec3(*noise[i])), g))
         if q.w < 0:
-            q = type(q)(-q.x, -q.y, -q.z, -q.w)
+            q = Quat(-q.x, -q.y, -q.z, -q.w)
+        t_jittered = rel + float(jitter[i]) if i > 0 else rel
         samples.append({
-            "t": round(spec.start_timestamp + rel, 4),
+            "t": round(spec.start_timestamp + t_jittered, 4),
             "q": [round(q.x, 4), round(q.y, 4), round(q.z, 4), round(q.w, 4)],
             "g": [round(g.x, 5), round(g.y, 5), round(g.z, 5)],
         })
@@ -361,7 +365,7 @@ def cooldown_retrigger(seed: int = 105, **kw) -> ScenarioSpec:
                     "first reminds; the second becomes sustained inside the cooldown (no reminder); "
                     "the third becomes sustained after the cooldown (reminds).",
         seed=seed, duration=116.0, sample_rate_hz=20.0, actions=list(CALIBRATE_AT_START),
-        config={"sustainedDuration": 10.0, "reminderCooldown": 60.0},
+        config={**AXES_CONFIG, "sustainedDuration": 10.0, "reminderCooldown": 60.0},
         keyframes=[(0, 0, 0), (14, 0, 0), (16, 22, 0), (34, 22, 0), (36, 0, 0),
                    (40, 0, 0), (42, 22, 0), (58, 22, 0), (60, 0, 0),
                    (88, 0, 0), (90, 22, 0), (106, 22, 0), (108, 0, 0)],

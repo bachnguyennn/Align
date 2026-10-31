@@ -13,6 +13,7 @@ from align_reference.fixtures import (
     replay,
 )
 from align_reference.generator import SCENARIOS, synthesize
+from align_reference.model import HeadAxisConvention
 
 PATHS = fixture_paths()
 REQUIRED = set(SCENARIOS)
@@ -39,6 +40,15 @@ def test_fixture_schema(path):
         assert len(s["q"]) == 4 and len(s["g"]) == 3
     for key in ("calibrationOutcomes", "reminders", "episodes", "finalState", "tolerances"):
         assert key in fx["expected"]
+
+
+@pytest.mark.parametrize("path", PATHS, ids=lambda p: p.stem)
+def test_fixture_axes_match_default_convention(path):
+    """Fixtures state their axes explicitly; they must equal the AlignCore default (D-011)."""
+    axes = HeadAxisConvention()
+    config = load_fixture(path)["config"]
+    assert config["forwardAxis"] == list(axes.forward_axis)
+    assert config["lateralAxis"] == list(axes.lateral_axis)
 
 
 @pytest.mark.parametrize("path", PATHS, ids=lambda p: p.stem)

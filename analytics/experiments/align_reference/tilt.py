@@ -74,6 +74,7 @@ def estimate_tilt(
     axes: HeadAxisConvention,
     orthogonalize_axes: bool = True,
 ) -> TiltEstimate:
+    baseline_unit = normalized(baseline_unit)
     r = rotation_vector(baseline_unit, gravity_unit)
     head = neg(r)
     if orthogonalize_axes:

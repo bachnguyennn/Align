@@ -90,6 +90,7 @@ def test_sustained_forward_tilt_reminds_once_and_closes_episode():
     assert len(reminders) == 1
     r = reminders[0]
     assert r.direction == FORWARD and r.sustained_seconds == pytest.approx(30.0, abs=0.05)
+    assert r.deviation_degrees == pytest.approx(25.0, abs=0.1)
     # A 0 -> 25 deg step through the tau = 0.5 s filter crosses 15 deg after tau * ln(25 / 10).
     lag = 0.5 * math.log(25.0 / 10.0)
     assert r.timestamp == pytest.approx(50.0 + lag, abs=DT)

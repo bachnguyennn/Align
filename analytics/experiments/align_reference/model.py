@@ -107,7 +107,12 @@ class PostureUpdate:
 
 @dataclass(frozen=True)
 class HeadAxisConvention:
-    forward_axis: Vec3 = Vec3(1.0, 0.0, 0.0)
+    """Mirrors AlignCore `HeadAxisConvention.airPodsDefault` after D-011. Assumed head frame:
+    +X toward the right ear, +Y toward the nose, +Z up (UNVERIFIED on hardware, task S-05).
+    A positive (right-hand rule) rotation about `forward_axis` = chin toward chest; about
+    `lateral_axis` = right ear toward right shoulder. forward x lateral = (0, 0, -1) (down)."""
+
+    forward_axis: Vec3 = Vec3(-1.0, 0.0, 0.0)
     lateral_axis: Vec3 = Vec3(0.0, 1.0, 0.0)
 
 
@@ -152,8 +157,8 @@ class PostureConfiguration:
         if not overrides:
             return PostureConfiguration()
         kwargs = {}
-        forward_axis = Vec3(1.0, 0.0, 0.0)
-        lateral_axis = Vec3(0.0, 1.0, 0.0)
+        forward_axis = HeadAxisConvention().forward_axis
+        lateral_axis = HeadAxisConvention().lateral_axis
         for key, value in overrides.items():
             if key == "forwardAxis":
                 forward_axis = Vec3(*[float(c) for c in value])
