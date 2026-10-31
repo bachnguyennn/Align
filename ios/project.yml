@@ -1,0 +1,122 @@
+# XcodeGen spec for the Align iOS app. Generate the project with:
+#   brew install xcodegen && cd ios && xcodegen generate && open Align.xcodeproj
+# The generated Align.xcodeproj (and AlignApp/Info.plist) are build artifacts and are not committed (D-003).
+#
+# CI (simulator, no signing):
+#   xcodebuild test -project Align.xcodeproj -scheme Align \
+#     -destination 'platform=iOS Simulator,name=iPhone 15' CODE_SIGNING_ALLOWED=NO
+
+name: Align
+
+options:
+  bundleIdPrefix: com.bachnguyennn
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+settings:
+  base:
+    # Swift 5 language mode (Xcode only accepts 4, 4.2, 5 or 6 here; "5.9" is a compiler version,
+    # not a language mode). Strict concurrency stays minimal until the codebase opts in to Swift 6.
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Leave empty in the repo; set your Team in Xcode (Signing & Capabilities) or pass
+    # DEVELOPMENT_TEAM=XXXXXXXXXX on the xcodebuild command line.
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  AlignKit:
+    path: AlignKit
+
+targets:
+  Align:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: AlignApp
+        excludes:
+          - "Info.plist"
+          - "PrivacyInfo.xcprivacy"
+      # Privacy manifest (D-012): copied as a bundle resource.
+      - path: AlignApp/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    info:
+      path: AlignApp/Info.plist
+      properties:
+        CFBundleDisplayName: Align
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        NSMotionUsageDescription: "Align uses your AirPods' motion sensors to notice when your head stays tilted, so it can remind you to reset your posture."
+        UILaunchScreen:
+          UIImageRespectsSafeAreaInsets: false
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # Background modes: intentionally NOT declared yet. Whether headphone motion keeps
+        # streaming in the background, and which UIBackgroundModes value (if any) is valid and
+        # App Review-safe for that, is being researched by the Sensor agent (S-01 / S-05).
+        # Add e.g. `UIBackgroundModes: [audio]` here only once that research confirms it.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bachnguyennn.align
+        PRODUCT_NAME: Align
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: "NO"
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
+        ENABLE_PREVIEWS: "YES"
+    dependencies:
+      - package: AlignKit
+        product: AlignCore
+      - package: AlignKit
+        product: PostureDetection
+      - package: AlignKit
+        product: Sensors
+
+  AlignAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: AlignAppTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bachnguyennn.alignTests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Align.app/Align"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: Align
+      # Tests `import AlignCore` for the contract types. The code itself is already linked into
+      # the host app, so the test bundle only needs the module, not a second copy of the library.
+      - package: AlignKit
+        product: AlignCore
+        link: false
+
+schemes:
+  Align:
+    build:
+      targets:
+        Align: all
+        AlignAppTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      targets:
+        - name: AlignAppTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
