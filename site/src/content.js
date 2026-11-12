@@ -3,7 +3,7 @@
 export const profile = {
   name: 'Bach Nguyen',
   github: 'https://github.com/bachnguyennn',
-  repo: 'https://github.com/bachnguyennn/FixMySpine',
+  repo: 'https://github.com/bachnguyennn/Align',
   // Leave empty to hide the link in the footer.
   linkedin: '',
   email: '',

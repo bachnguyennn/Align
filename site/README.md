@@ -26,4 +26,4 @@ The build uses a relative base path, so `dist/` can be served from any folder.
 `.github/workflows/pages.yml` tests, builds and publishes the site to GitHub Pages on every push
 to `main` that touches `site/` or `shared/fixtures/motion/`, and can be run by hand from the
 Actions tab. It needs Settings → Pages → Source set to "GitHub Actions" once. The site is then
-at https://bachnguyennn.github.io/FixMySpine/.
+at https://bachnguyennn.github.io/Align/.
