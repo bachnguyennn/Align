@@ -19,5 +19,11 @@ npm run build    # static output in dist/
 - `src/content.js` holds every fact the page states, with the repo file it comes from, and the
   author links shown in the footer.
 
-The build uses a relative base path, so `dist/` can be served from any folder, including a
-GitHub Pages project site.
+The build uses a relative base path, so `dist/` can be served from any folder.
+
+## Deployment
+
+`.github/workflows/pages.yml` tests, builds and publishes the site to GitHub Pages on every push
+to `main` that touches `site/` or `shared/fixtures/motion/`, and can be run by hand from the
+Actions tab. It needs Settings → Pages → Source set to "GitHub Actions" once. The site is then
+at https://bachnguyennn.github.io/FixMySpine/.
