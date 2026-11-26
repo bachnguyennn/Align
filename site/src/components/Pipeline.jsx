@@ -13,6 +13,7 @@ export default function Pipeline() {
     const k = s.state.kind;
     if (k === 'deviating') return `deviating ${s.state.direction}, ${s.held.toFixed(0)}\u00a0s`;
     if (k === 'sustainedTilt') return `sustained ${s.state.direction}, ${s.held.toFixed(0)}\u00a0s`;
+    if (k === 'calibrating' && s.countdownRemaining != null) return `calibrating, get ready ${Math.ceil(s.countdownRemaining)}\u00a0s`;
     if (k === 'calibrating') return `calibrating, ${Math.round(s.state.progress * 100)}%`;
     return k === 'needsCalibration' ? 'needs calibration' : k;
   });

@@ -52,6 +52,8 @@ struct OnboardingView: View {
 }
 
 private struct WelcomeStep: View {
+    @Environment(SettingsStore.self) private var settings
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.l) {
@@ -65,7 +67,7 @@ private struct WelcomeStep: View {
                 Text("Align uses the motion sensors in your AirPods to notice when your head stays tilted forward or to the side for a while, then gives you a gentle nudge to reset.")
                     .font(.body)
                 VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-                    OnboardingPoint(systemImage: "scope", title: "Calibrate once", text: "Sit comfortably upright for 10 seconds so Align learns your neutral position.")
+                    OnboardingPoint(systemImage: "scope", title: "Calibrate once", text: "\(CalibrationView.holdInstruction(settings.configuration).dropLast()) so Align learns your neutral position.")
                     OnboardingPoint(systemImage: "bell", title: "Calm reminders", text: "Short glances down are ignored. You're only reminded after a tilt lasts a while.")
                     OnboardingPoint(systemImage: "chart.bar", title: "See your sessions", text: "Review time in range and reminders over the past week.")
                     OnboardingPoint(systemImage: "iphone", title: "While the app is open", text: "Align monitors while it's open on screen. Leaving the app pauses monitoring.")

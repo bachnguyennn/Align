@@ -24,7 +24,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 /** Port of tests/test_components.py: MotionFilter, CalibrationService, PostureDetector, ReminderDecisionEngine. */
 class ComponentsTest {
 
-    private static final PostureConfiguration CFG = PostureConfiguration.DEFAULT;
+    private static final PostureConfiguration CFG = TestConfigs.NO_COUNTDOWN;
 
     private static Vec3 gFor(double forward, double lateral) {
         return gravityInHeadFrame(Pose.poseAttitude(forward, lateral));

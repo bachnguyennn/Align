@@ -13,7 +13,7 @@ final class PostureMonitorTests: XCTestCase {
         NeutralBaseline(gravity: Vector3(x: 0, y: 0, z: -1), capturedAt: Date(), sampleCount: 250, version: version)
     }
 
-    private func calibratedMonitor(_ configuration: PostureConfiguration = .default) -> PostureMonitor {
+    private func calibratedMonitor(_ configuration: PostureConfiguration = .noCountdown) -> PostureMonitor {
         let monitor = PostureMonitor(configuration: configuration)
         monitor.beginCalibration()
         feed(monitor, from: 0, to: 10 + dt)
@@ -22,7 +22,7 @@ final class PostureMonitorTests: XCTestCase {
     }
 
     func testInitialStates() {
-        let monitor = PostureMonitor()
+        let monitor = PostureMonitor(configuration: .noCountdown)
         XCTAssertEqual(monitor.state, .unavailable)
         let update = monitor.process(Pose.sample(0))
         XCTAssertEqual(update.state, .needsCalibration)
@@ -32,7 +32,7 @@ final class PostureMonitorTests: XCTestCase {
     }
 
     func testCalibrationProgressSingleOutcomeAndVersion() {
-        let monitor = PostureMonitor()
+        let monitor = PostureMonitor(configuration: .noCountdown)
         monitor.beginCalibration()
         XCTAssertEqual(monitor.state, .calibrating(progress: 0))
         let updates = feed(monitor, from: 0, to: 12)
@@ -50,7 +50,7 @@ final class PostureMonitorTests: XCTestCase {
     }
 
     func testVersionContinuesFromStoredBaseline() {
-        let monitor = PostureMonitor(baseline: storedBaseline(version: 5))
+        let monitor = PostureMonitor(configuration: .noCountdown, baseline: storedBaseline(version: 5))
         monitor.beginCalibration()
         feed(monitor, from: 0, to: 10.5)
         XCTAssertEqual(monitor.baseline?.version, 6)
@@ -131,7 +131,7 @@ final class PostureMonitorTests: XCTestCase {
     }
 
     func testInterruptFailsCalibration() {
-        let monitor = PostureMonitor()
+        let monitor = PostureMonitor(configuration: .noCountdown)
         monitor.beginCalibration()
         feed(monitor, from: 0, to: 5)
         let update = monitor.interrupt(at: 5)
@@ -152,7 +152,7 @@ final class PostureMonitorTests: XCTestCase {
     }
 
     func testGapDuringCalibrationReportsSensorInterruptedOnNextSample() {
-        let monitor = PostureMonitor()
+        let monitor = PostureMonitor(configuration: .noCountdown)
         monitor.beginCalibration()
         feed(monitor, from: 0, to: 4)
         let update = monitor.process(Pose.sample(6))
@@ -161,7 +161,7 @@ final class PostureMonitorTests: XCTestCase {
     }
 
     func testDecimationCapsProcessingRate() {
-        var configuration = PostureConfiguration.default
+        var configuration = PostureConfiguration.noCountdown
         configuration.maxProcessingRateHz = 10
         let monitor = PostureMonitor(configuration: configuration, baseline: storedBaseline())
         var processed = 0

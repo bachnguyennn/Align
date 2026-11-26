@@ -19,6 +19,7 @@ struct MotionFixture: Decodable {
 
 struct FixtureConfig: Decodable {
     let calibrationDuration: Double?
+    let calibrationCountdown: Double?
     let calibrationMaxSpreadDegrees: Double?
     let calibrationSpreadQuantile: Double?
     let calibrationMaxDriftDegrees: Double?
@@ -43,6 +44,7 @@ struct FixtureConfig: Decodable {
     func configuration() -> PostureConfiguration {
         var c = PostureConfiguration.default
         if let v = calibrationDuration { c.calibrationDuration = v }
+        if let v = calibrationCountdown { c.calibrationCountdown = v }
         if let v = calibrationMaxSpreadDegrees { c.calibrationMaxSpreadDegrees = v }
         if let v = calibrationSpreadQuantile { c.calibrationSpreadQuantile = v }
         if let v = calibrationMaxDriftDegrees { c.calibrationMaxDriftDegrees = v }
@@ -335,6 +337,8 @@ final class FixtureReplayTests: XCTestCase {
         "nod_axis_calibration_no_nod",
         "calibration_brief_fidget",
         "calibration_slow_slouch",
+        "calibration_countdown_look_up",
+        "calibration_countdown_moved_during_hold",
     ]
 
     func testFixtureDirectoryContainsAllFixtures() throws {
@@ -366,6 +370,16 @@ final class FixtureReplayTests: XCTestCase {
     func testNodAxisCalibrationNoNod() throws { try check("nod_axis_calibration_no_nod") }
     func testCalibrationBriefFidget() throws { try check("calibration_brief_fidget") }
     func testCalibrationSlowSlouch() throws { try check("calibration_slow_slouch") }
+    func testCalibrationCountdownLookUp() throws { try check("calibration_countdown_look_up") }
+    func testCalibrationCountdownMovedDuringHold() throws { try check("calibration_countdown_moved_during_hold") }
+
+    /// The look-up fixture is about D-022: without the countdown, looking up fails the calibration.
+    func testLookUpFixtureNeedsTheCountdown() throws {
+        let fixture = try FixtureReplay.load("calibration_countdown_look_up")
+        var noCountdown = fixture.config?.configuration() ?? .default
+        noCountdown.calibrationCountdown = 0
+        XCTAssertEqual(FixtureReplay.replay(fixture, configuration: noCountdown).calibrationOutcomes, ["tooMuchMovement"])
+    }
 
     /// The slow-slouch fixture is about D-020: only the drift rule rejects it.
     func testSlowSlouchFixtureIsRejectedByTheDriftRule() throws {

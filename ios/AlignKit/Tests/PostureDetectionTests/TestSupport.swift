@@ -220,3 +220,14 @@ extension AxisCalibrationOutcome {
         return nil
     }
 }
+
+extension PostureConfiguration {
+    /// The defaults without the D-022 "get ready" countdown: the calibration hold starts on the
+    /// first sample, as every unit test written before D-022 assumes. The countdown has its own
+    /// tests in CalibrationCountdownTests.
+    static var noCountdown: PostureConfiguration {
+        var c = PostureConfiguration.default
+        c.calibrationCountdown = 0
+        return c
+    }
+}

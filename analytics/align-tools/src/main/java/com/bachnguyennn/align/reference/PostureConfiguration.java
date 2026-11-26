@@ -12,9 +12,14 @@ import java.util.function.Consumer;
  * <p>D-017: {@code calibrationSpreadQuantile} (fraction of neutral-calibration samples that must
  * lie within {@code calibrationMaxSpreadDegrees} of the mean; 1.0 = v1 rule) and the guided-nod
  * axis calibration parameters {@code axisCalibration*}.
+ *
+ * <p>D-022: {@code calibrationCountdown} seconds after the first sample of a neutral calibration
+ * are a "get ready" countdown whose samples are discarded; the {@code calibrationDuration} hold
+ * starts after it. 0 = no countdown (the v1 behavior, pinned by the v1/D-017/D-020 fixtures).
  */
 public record PostureConfiguration(
         double calibrationDuration,
+        double calibrationCountdown,
         double calibrationMaxSpreadDegrees,
         double calibrationSpreadQuantile,
         double calibrationMaxDriftDegrees,
@@ -41,6 +46,7 @@ public record PostureConfiguration(
     /** Fixture JSON (= Swift property) names of the scalar fields, besides forwardAxis/lateralAxis. */
     private static final Map<String, Setter> CONFIG_KEYS = Map.ofEntries(
             Map.entry("calibrationDuration", (b, v) -> b.calibrationDuration(v.asDouble())),
+            Map.entry("calibrationCountdown", (b, v) -> b.calibrationCountdown(v.asDouble())),
             Map.entry("calibrationMaxSpreadDegrees", (b, v) -> b.calibrationMaxSpreadDegrees(v.asDouble())),
             Map.entry("calibrationSpreadQuantile", (b, v) -> b.calibrationSpreadQuantile(v.asDouble())),
             Map.entry("calibrationMaxDriftDegrees", (b, v) -> b.calibrationMaxDriftDegrees(v.asDouble())),
@@ -119,6 +125,7 @@ public record PostureConfiguration(
     /** Mutable builder starting from the defaults. */
     public static final class Builder {
         private double calibrationDuration = 10.0;
+        private double calibrationCountdown = 3.0;
         private double calibrationMaxSpreadDegrees = 5.0;
         private double calibrationSpreadQuantile = 0.9;
         private double calibrationMaxDriftDegrees = 3.0;
@@ -143,6 +150,7 @@ public record PostureConfiguration(
 
         private Builder(PostureConfiguration c) {
             calibrationDuration = c.calibrationDuration;
+            calibrationCountdown = c.calibrationCountdown;
             calibrationMaxSpreadDegrees = c.calibrationMaxSpreadDegrees;
             calibrationSpreadQuantile = c.calibrationSpreadQuantile;
             calibrationMaxDriftDegrees = c.calibrationMaxDriftDegrees;
@@ -165,6 +173,7 @@ public record PostureConfiguration(
         }
 
         public Builder calibrationDuration(double v) { calibrationDuration = v; return this; }
+        public Builder calibrationCountdown(double v) { calibrationCountdown = v; return this; }
         public Builder calibrationMaxSpreadDegrees(double v) { calibrationMaxSpreadDegrees = v; return this; }
         public Builder calibrationSpreadQuantile(double v) { calibrationSpreadQuantile = v; return this; }
         public Builder calibrationMaxDriftDegrees(double v) { calibrationMaxDriftDegrees = v; return this; }
@@ -186,7 +195,7 @@ public record PostureConfiguration(
         public Builder axisCalibrationMaxOffAxisRatio(double v) { axisCalibrationMaxOffAxisRatio = v; return this; }
 
         public PostureConfiguration build() {
-            return new PostureConfiguration(calibrationDuration, calibrationMaxSpreadDegrees,
+            return new PostureConfiguration(calibrationDuration, calibrationCountdown, calibrationMaxSpreadDegrees,
                     calibrationSpreadQuantile, calibrationMaxDriftDegrees, calibrationDriftWindow,
                     minimumCalibrationSamples, forwardThresholdDegrees,
                     backwardThresholdDegrees, lateralThresholdDegrees, hysteresisDegrees, sustainedDuration,

@@ -36,6 +36,8 @@ export function gravityFromAttitude(q) {
 
 export const defaultConfiguration = () => ({
   calibrationDuration: 10,
+  // "Get ready" countdown before the hold (D-022); its samples are discarded. 0 = no countdown.
+  calibrationCountdown: 3,
   calibrationMaxSpreadDegrees: 5,
   calibrationSpreadQuantile: 0.9,
   calibrationMaxDriftDegrees: 3,
@@ -137,6 +139,10 @@ const QUANTILE_EPSILON = 1e-9;
 /**
  * Collects `calibrationDuration` seconds of smoothed gravity and turns it into a baseline.
  *
+ * Countdown (D-022): the first sample after `begin()` starts a "get ready" countdown of
+ * `calibrationCountdown` seconds. Samples before its end are discarded (the user is still looking
+ * down at the phone); the hold starts on the first sample at or after it. Progress stays 0.
+ *
  * Spread rule (D-017): at least `calibrationSpreadQuantile` of the samples must lie within
  * `calibrationMaxSpreadDegrees` of the mean, so a brief fidget is tolerated. The baseline is the
  * mean of those inliers.
@@ -147,6 +153,7 @@ const QUANTILE_EPSILON = 1e-9;
  */
 export class CalibrationService {
   isActive = false;
+  countdownStart = null;
   startTimestamp = null;
   lastTimestamp = null;
   samples = [];
@@ -154,6 +161,7 @@ export class CalibrationService {
 
   begin() {
     this.isActive = true;
+    this.countdownStart = null;
     this.startTimestamp = null;
     this.lastTimestamp = null;
     this.samples = [];
@@ -162,10 +170,23 @@ export class CalibrationService {
 
   cancel() {
     this.isActive = false;
+    this.countdownStart = null;
     this.startTimestamp = null;
     this.lastTimestamp = null;
     this.samples = [];
     this.timestamps = [];
+  }
+
+  /** True while active and the hold has not started. */
+  get isCountingDown() {
+    return this.isActive && this.startTimestamp === null;
+  }
+
+  /** Seconds left in the countdown; 0 once the hold has started or when not active. */
+  countdownRemaining(countdown) {
+    if (!this.isCountingDown) return 0;
+    if (this.countdownStart === null || this.lastTimestamp === null) return Math.max(0, countdown);
+    return Math.max(0, countdown - (this.lastTimestamp - this.countdownStart));
   }
 
   progress(duration) {
@@ -194,8 +215,14 @@ export class CalibrationService {
   }
 
   add(gravity, timestamp, config) {
-    if (this.startTimestamp === null) this.startTimestamp = timestamp;
+    if (this.countdownStart === null) this.countdownStart = timestamp;
     this.lastTimestamp = timestamp;
+    if (this.startTimestamp === null) {
+      if (timestamp - this.countdownStart + TIME_EPSILON < config.calibrationCountdown) {
+        return { kind: 'inProgress', progress: 0 };
+      }
+      this.startTimestamp = timestamp;
+    }
     this.samples.push(gravity);
     this.timestamps.push(timestamp);
     const duration = config.calibrationDuration;
@@ -525,6 +552,12 @@ export class PostureMonitor {
     if (!this.hasData) return { kind: 'unavailable' };
     if (this.baseline === null) return { kind: 'needsCalibration' };
     return this.detector.state;
+  }
+
+  /** Seconds left in the calibration countdown (D-022), or null when none is running. */
+  get calibrationCountdownRemaining() {
+    if (!this.calibration.isCountingDown) return null;
+    return this.calibration.countdownRemaining(this.configuration.calibrationCountdown);
   }
 
   get effectiveAxes() {

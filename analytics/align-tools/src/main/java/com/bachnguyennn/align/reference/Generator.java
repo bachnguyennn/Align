@@ -76,12 +76,25 @@ public final class Generator {
 
     private Generator() {}
 
-    /** {@code {"forwardAxis": [...], "lateralAxis": [...]}} of the default convention (a new node). */
+    /**
+     * {@code {"forwardAxis": [...], "lateralAxis": [...], "calibrationCountdown": 0.0}}: the default
+     * axis convention, and no "get ready" countdown (D-022), so the calibration hold starts on the
+     * first sample as in every scenario written before D-022 (a new node). The countdown scenarios
+     * remove the key to use the default countdown.
+     */
     public static ObjectNode axesConfig() {
         HeadAxisConvention axes = HeadAxisConvention.DEFAULT;
         ObjectNode config = Json.object();
         config.set("forwardAxis", vec3(axes.forwardAxis()));
         config.set("lateralAxis", vec3(axes.lateralAxis()));
+        config.put("calibrationCountdown", 0.0);
+        return config;
+    }
+
+    /** {@link #axesConfig()} without {@code calibrationCountdown}: the default countdown applies. */
+    public static ObjectNode defaultCountdownConfig() {
+        ObjectNode config = axesConfig();
+        config.remove("calibrationCountdown");
         return config;
     }
 
@@ -786,6 +799,53 @@ public final class Generator {
     }
 
     /**
+     * The user taps Start calibration while looking down at the phone (30 deg forward), and looks
+     * up to neutral during the default 3 s countdown (D-022, the 2026-10-31 hardware finding).
+     */
+    public static List<Keyframe> lookUpFromPhoneKeyframes() {
+        return keyframes(new double[][] {{0.0, 30.0, 0.0}, {0.8, 30.0, 0.0}, {2.2, 0.0, 0.0}});
+    }
+
+    public static ScenarioSpec calibrationCountdownLookUp() {
+        return calibrationCountdownLookUp(115);
+    }
+
+    public static ScenarioSpec calibrationCountdownLookUp(long seed) {
+        return new ScenarioSpec("calibration_countdown_look_up",
+                "The user starts calibration looking down at the phone (30 deg forward) and looks up "
+                        + "to neutral during the default 3 s get-ready countdown (D-022), then holds still. "
+                        + "The countdown samples are discarded, so the 10 s hold (3-13 s) is steady. "
+                        + "Expect succeeded (without the countdown the look-up fails it).",
+                seed, 18.0)
+                .config(defaultCountdownConfig())
+                .actions(new ArrayList<>(CALIBRATE_AT_START))
+                .keyframes(lookUpFromPhoneKeyframes())
+                .calmWindows(List.of(new Interval(0.0, 14.0)))
+                .expected(s -> expected(List.of("succeeded"), List.of(), "neutral"));
+    }
+
+    public static ScenarioSpec calibrationCountdownMovedDuringHold() {
+        return calibrationCountdownMovedDuringHold(116);
+    }
+
+    public static ScenarioSpec calibrationCountdownMovedDuringHold(long seed) {
+        return new ScenarioSpec("calibration_countdown_moved_during_hold",
+                "Like calibration_countdown_look_up, but the user nods/looks around (+-9 deg forward, "
+                        + "+-4 deg lateral) during the hold after the countdown (D-022). The countdown only "
+                        + "discards its own samples, so expect tooMuchMovement.",
+                seed, 18.0)
+                .config(defaultCountdownConfig())
+                .actions(new ArrayList<>(CALIBRATE_AT_START))
+                .keyframes(lookUpFromPhoneKeyframes())
+                .calmWindows(List.of(new Interval(0.0, 14.0)))
+                .wobble(t -> t >= 3.5 && t <= 13.5
+                        ? new Angles(9.0 * StrictMath.sin(2 * Math.PI * 0.3 * (t - 3.5)),
+                                4.0 * StrictMath.sin(2 * Math.PI * 0.2 * (t - 3.5)))
+                        : new Angles(0.0, 0.0))
+                .expected(s -> expected(List.of("tooMuchMovement"), List.of(), "needsCalibration"));
+    }
+
+    /**
      * A steady slouch from 0 to {@code degrees} forward over {@code seconds}, as ten short eased
      * segments (close to linear, so the samples spread evenly around the mean), then held.
      */
@@ -821,6 +881,8 @@ public final class Generator {
         m.put("nod_axis_calibration_no_nod", Generator::nodAxisCalibrationNoNod);
         m.put("calibration_brief_fidget", Generator::calibrationBriefFidget);
         m.put("calibration_slow_slouch", Generator::calibrationSlowSlouch);
+        m.put("calibration_countdown_look_up", Generator::calibrationCountdownLookUp);
+        m.put("calibration_countdown_moved_during_hold", Generator::calibrationCountdownMovedDuringHold);
         return Collections.unmodifiableMap(m);
     }
 

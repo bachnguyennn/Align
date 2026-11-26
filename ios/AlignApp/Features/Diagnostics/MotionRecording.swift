@@ -61,7 +61,7 @@ enum MotionRecordingEncoder {
     /// names) plus `forwardAxis` / `lateralAxis`. The D-020 drift fields are left out because the
     /// replay tool rejects keys it does not know yet; replay then uses their defaults.
     static let configKeys: [String] = [
-        "calibrationDuration", "calibrationMaxSpreadDegrees", "calibrationSpreadQuantile",
+        "calibrationDuration", "calibrationCountdown", "calibrationMaxSpreadDegrees", "calibrationSpreadQuantile",
         "calibrationMaxDriftDegrees", "calibrationDriftWindow", "minimumCalibrationSamples", "forwardThresholdDegrees", "backwardThresholdDegrees",
         "lateralThresholdDegrees", "hysteresisDegrees", "sustainedDuration", "reminderCooldown",
         "smoothingTimeConstant", "maxProcessingRateHz", "maxSampleGap", "forwardAxis", "lateralAxis",
@@ -142,6 +142,7 @@ enum MotionRecordingEncoder {
     private static func config(_ c: PostureConfiguration) -> String {
         var values: [String: String] = [
             "calibrationDuration": number(c.calibrationDuration, decimals: 6),
+            "calibrationCountdown": number(c.calibrationCountdown, decimals: 6),
             "calibrationMaxSpreadDegrees": number(c.calibrationMaxSpreadDegrees, decimals: 6),
             "calibrationSpreadQuantile": number(c.calibrationSpreadQuantile, decimals: 6),
             "calibrationMaxDriftDegrees": number(c.calibrationMaxDriftDegrees, decimals: 6),

@@ -31,6 +31,8 @@ enum CalibrationPhase: Equatable {
     case idle
     /// Calibration requested, waiting for samples (e.g. AirPods not connected yet).
     case waitingForSensor
+    /// "Get ready" countdown before recording (D-022): whole seconds left, counting 3, 2, 1.
+    case countingDown(secondsLeft: Int)
     case inProgress(progress: Double)
     case succeeded(NeutralBaseline)
     case failed(CalibrationFailure)
@@ -172,7 +174,7 @@ final class MonitoringController {
 
     var isNeutralCalibrating: Bool {
         switch calibrationPhase {
-        case .waitingForSensor, .inProgress:
+        case .waitingForSensor, .countingDown, .inProgress:
             return true
         case .idle, .succeeded, .failed:
             return false
@@ -356,7 +358,16 @@ final class MonitoringController {
         // Also cancels a nod in progress (without an outcome).
         perform(.beginCalibration)
         axisCalibrationPhase = .idle
-        calibrationPhase = connectionState == .connected ? .inProgress(progress: 0) : .waitingForSensor
+        calibrationPhase = connectionState == .connected ? phaseWhileCalibrating(progress: 0) : .waitingForSensor
+    }
+
+    /// `.countingDown` while the monitor's "get ready" countdown runs (D-022), else `.inProgress`.
+    /// The seconds round up, so a 3 s countdown shows 3, 2, 1 and never 0.
+    private func phaseWhileCalibrating(progress: Double) -> CalibrationPhase {
+        guard let remaining = monitor.calibrationCountdownRemaining else {
+            return .inProgress(progress: progress)
+        }
+        return .countingDown(secondsLeft: max(1, Int((remaining - 1e-9).rounded(.up))))
     }
 
     /// Cancels a neutral calibration or a nod in progress. The stored baseline is unchanged.
@@ -725,7 +736,10 @@ final class MonitoringController {
         if let outcome = update.calibrationOutcome {
             handleCalibrationOutcome(outcome)
         } else if case .calibrating(let progress) = update.state, isNeutralCalibrating {
-            calibrationPhase = .inProgress(progress: progress)
+            let phase = phaseWhileCalibrating(progress: progress)
+            if calibrationPhase != phase {
+                calibrationPhase = phase
+            }
         }
 
         if let axisOutcome = update.axisCalibrationOutcome {

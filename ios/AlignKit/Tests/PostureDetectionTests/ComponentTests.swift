@@ -47,7 +47,7 @@ final class MotionFilterTests: XCTestCase {
 }
 
 final class CalibrationServiceTests: XCTestCase {
-    private let config = PostureConfiguration.default
+    private let config = PostureConfiguration.noCountdown
 
     private func run(_ gravities: [Vector3], rate: Double = 25) -> (step: CalibrationService.Step?, used: Int) {
         var service = CalibrationService()
@@ -218,7 +218,7 @@ final class CalibrationServiceTests: XCTestCase {
 }
 
 final class PostureDetectorTests: XCTestCase {
-    private let config = PostureConfiguration.default
+    private let config = PostureConfiguration.noCountdown
 
     func testNeutralDeviatingSustainedAndEpisode() {
         var d = PostureDetector()

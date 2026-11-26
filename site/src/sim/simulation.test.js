@@ -47,12 +47,25 @@ describe('simulated motion through the real pipeline', () => {
     expect(run(sim, 50)).toHaveLength(0);
   });
 
+  it('ignores head movement during the get-ready countdown', () => {
+    const sim = new Simulation();
+    sim.setTarget(30, 0);  // looking down at the phone
+    run(sim, 1);
+    sim.recalibrate();
+    expect(sim.monitor.calibrationCountdownRemaining).toBe(3);
+    run(sim, 1);
+    sim.setTarget(0, 0);  // looks up during the countdown
+    run(sim, 13);
+    expect(sim.events.some((e) => e.text.startsWith('Calibrated'))).toBe(true);
+    expect(sim.monitor.state.kind).toBe('neutral');
+  });
+
   it('fails calibration when the head moves', () => {
     const sim = new Simulation();
     sim.recalibrate();
-    run(sim, 3);
+    run(sim, 4);  // the 3 s get-ready countdown (D-022), then 1 s of the hold
     sim.setTarget(15, 0);
-    run(sim, 9);
+    run(sim, 11);
     expect(sim.events.some((e) => e.text.includes('moved too much'))).toBe(true);
   });
 });

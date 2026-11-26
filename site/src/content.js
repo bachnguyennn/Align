@@ -21,7 +21,7 @@ export const suites = [
   { count: 164, name: 'Swift package', command: 'swift test', covers: 'Core types, sensors, posture detection, fixture replay', path: 'ios/AlignKit/Tests' },
   { count: 57, name: 'iOS app', command: 'xcodebuild test', covers: 'Session accounting, settings, sample watchdog, motion recording', path: 'ios/AlignAppTests' },
   { count: 154, name: 'Sync server', command: './mvnw verify', covers: 'Device auth, uploads, isolation between devices, pagination, request limits', path: 'server' },
-  { count: 20, name: 'This page', command: 'npm test', covers: 'The JavaScript port against the same 14 fixtures, and the simulation', path: 'site/src' },
+  { count: 28, name: 'This page', command: 'npm test', covers: 'The JavaScript port against the same 16 fixtures, and the simulation', path: 'site/src' },
 ];
 
 // analytics/align-tools/results/evaluation.md, "Glance length vs reminder".
@@ -62,7 +62,7 @@ export const decisions = [
   {
     id: 'D-015',
     title: 'A Java reference is the executable specification',
-    body: 'The algorithm exists twice. The Java version records its exact output for each of 14 shared motion fixtures. The Swift version must reproduce the same reminders, episodes and calibration results, within one sample period and 0.05°.',
+    body: 'The algorithm exists twice. The Java version records its exact output for each of 16 shared motion fixtures. The Swift version must reproduce the same reminders, episodes and calibration results, within one sample period and 0.05°.',
     path: 'shared/fixtures/README.md',
   },
   {
@@ -104,7 +104,7 @@ export const axisCheck = [
 export const findings = [
   {
     title: 'Calibration has no settle period',
-    body: 'Collection starts on the first sample after the tap, while the user is still looking down at the phone. Raising the head then failed the 5° spread limit every time. Calibration now tolerates a brief fidget, but there is still no countdown before samples are collected.',
+    body: 'Collection started on the first sample after the tap, while the user was still looking down at the phone. Raising the head then failed the 5° spread limit every time. A 3 s get-ready countdown now discards those samples (D-022); not yet confirmed on a device.',
   },
   {
     title: 'Readings shift when the left earbud takes over',

@@ -1,9 +1,15 @@
 import Foundation
 import AlignCore
 
-/// Collects `calibrationDuration` seconds of smoothed gravity, measured from the first sample it
-/// receives after `begin()`. Fails with `.insufficientSamples` if fewer than
-/// `minimumCalibrationSamples` were collected.
+/// Collects `calibrationDuration` seconds of smoothed gravity, measured from the first sample after
+/// the countdown. Fails with `.insufficientSamples` if fewer than `minimumCalibrationSamples` were
+/// collected.
+///
+/// Countdown (D-022): the first sample after `begin()` starts a "get ready" countdown of
+/// `calibrationCountdown` seconds. Samples with t − countdownStart < countdown are discarded (the
+/// user is still looking down at the phone); the first sample at or after the end of the countdown
+/// is the first sample of the hold. Progress stays 0 during the countdown. With a countdown of 0
+/// the first sample starts the hold, exactly as before D-022.
 ///
 /// Spread rule (D-017): let `m` be the normalized mean of all samples and the inliers the samples
 /// within `calibrationMaxSpreadDegrees` of `m`. Fails with `.tooMuchMovement` unless the inliers are
@@ -26,6 +32,7 @@ public struct CalibrationService: Sendable {
     }
 
     public private(set) var isActive = false
+    public private(set) var countdownStart: TimeInterval?
     public private(set) var startTimestamp: TimeInterval?
     public private(set) var lastTimestamp: TimeInterval?
     private var samples: [Vector3] = []
@@ -37,6 +44,7 @@ public struct CalibrationService: Sendable {
 
     public mutating func begin() {
         isActive = true
+        countdownStart = nil
         startTimestamp = nil
         lastTimestamp = nil
         samples = []
@@ -45,6 +53,7 @@ public struct CalibrationService: Sendable {
 
     public mutating func cancel() {
         isActive = false
+        countdownStart = nil
         startTimestamp = nil
         lastTimestamp = nil
         samples = []
@@ -89,7 +98,25 @@ public struct CalibrationService: Sendable {
         return TiltEstimator.angleDegrees(between: head.normalized, and: tail.normalized)
     }
 
-    /// 0...1 while active; 0 before the first sample.
+    /// True while active and the hold has not started (the countdown is running).
+    public var isCountingDown: Bool {
+        isActive && startTimestamp == nil
+    }
+
+    /// Seconds left in the countdown (D-022): the whole countdown before the first sample, then
+    /// countdown − (last − countdownStart), never below 0. 0 once the hold has started or when not
+    /// active.
+    public func countdownRemaining(countdown: TimeInterval) -> TimeInterval {
+        guard isCountingDown else {
+            return 0
+        }
+        guard let start = countdownStart, let last = lastTimestamp else {
+            return max(0, countdown)
+        }
+        return max(0, countdown - (last - start))
+    }
+
+    /// 0...1 while active; 0 before the first sample of the hold.
     public func progress(duration: TimeInterval) -> Double {
         guard isActive, let start = startTimestamp, let last = lastTimestamp else {
             return 0
@@ -102,10 +129,16 @@ public struct CalibrationService: Sendable {
     }
 
     public mutating func add(gravity: Vector3, timestamp: TimeInterval, configuration: PostureConfiguration) -> Step {
-        if startTimestamp == nil {
-            startTimestamp = timestamp
+        if countdownStart == nil {
+            countdownStart = timestamp
         }
         lastTimestamp = timestamp
+        if startTimestamp == nil {
+            if timestamp - (countdownStart ?? timestamp) + PostureDetectionConstants.timeEpsilon < configuration.calibrationCountdown {
+                return .inProgress(progress: 0)
+            }
+            startTimestamp = timestamp
+        }
         samples.append(gravity)
         timestamps.append(timestamp)
         let elapsed = timestamp - (startTimestamp ?? timestamp)

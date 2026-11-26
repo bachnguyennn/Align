@@ -341,6 +341,8 @@ struct MotionRecordingSection: View {
         switch controller.calibrationPhase {
         case .waitingForSensor:
             return "Waiting for your AirPods…"
+        case .countingDown(let secondsLeft):
+            return "Get ready: look straight ahead (\(secondsLeft))."
         case .inProgress(let progress):
             return "Calibrating: hold still and look ahead (\(Format.percent(progress)))."
         case .succeeded(let baseline):
