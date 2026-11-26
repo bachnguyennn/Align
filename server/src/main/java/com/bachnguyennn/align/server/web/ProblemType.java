@@ -25,7 +25,7 @@ public enum ProblemType {
     INTERNAL_ERROR("internal-error", HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error");
 
     public static final String BASE_URI =
-            "https://github.com/bachnguyennn/FixMySpine/blob/main/docs/agents/api-contracts.md#";
+            "https://github.com/bachnguyennn/Align/blob/main/docs/agents/api-contracts.md#";
 
     private final String slug;
     private final HttpStatus status;

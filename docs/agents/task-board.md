@@ -13,7 +13,7 @@ compiled or run is at most `in review`.
 | S-02 | `RealAirPodsSensorProvider` | Sensor | L-01 | compiles (iOS Sim, CI run 41179990821); device untested | `Sources/Sensors` | CI compile (iOS); device test S-05 |
 | S-03 | `MockSensorProvider` + scenarios | Sensor | L-01 | done (CI tests pass) | `Sources/Sensors` | `SensorsTests` |
 | S-04 | `SampleRateMeter` | Sensor | L-01 | done (CI tests pass) | `Sources/Sensors` | `SensorsTests` |
-| S-05 | Hardware check: axes, sample rate, lock/background behavior | Sensor + user | F-02, physical iPhone + AirPods Pro | blocked (needs device) | Feasibility doc results | Manual device protocol |
+| S-05 | Hardware check: axes, sample rate, lock/background behavior | Sensor + user | F-02, physical iPhone + AirPods Pro | partly done: first run 2026-10-31, axis signs match D-011; sample rate, disconnects, lock/background and battery not run (issue #4) | `reports/hardware-test-2026-10-31.md` | Manual device protocol |
 | A-01 | Python reference pipeline + synthetic fixture generator | Algorithm | L-01 | done (104 pytest pass); superseded by A-05 | `analytics/experiments` (removed), `shared/fixtures/motion` | pytest (local) |
 | A-02 | Swift `PostureMonitor` + components | Algorithm | L-01 | done (CI tests pass) | `Sources/PostureDetection` | `PostureDetectionTests` in CI |
 | A-03 | Cross-language fixture replay parity | Algorithm | A-01, A-02 | done (8 fixtures, Swift = reference) | Swift tests replaying fixtures | CI |

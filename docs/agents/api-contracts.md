@@ -41,7 +41,7 @@ Every error is `application/problem+json`:
 
 ```json
 {
-  "type": "https://github.com/bachnguyennn/FixMySpine/blob/main/docs/agents/api-contracts.md#validation-failed",
+  "type": "https://github.com/bachnguyennn/Align/blob/main/docs/agents/api-contracts.md#validation-failed",
   "title": "Validation failed",
   "status": 422,
   "detail": "The request body has invalid fields.",

@@ -4,7 +4,7 @@
 #
 # CI (simulator, no signing):
 #   xcodebuild test -project Align.xcodeproj -scheme Align \
-#     -destination 'platform=iOS Simulator,name=iPhone 15' CODE_SIGNING_ALLOWED=NO
+#     -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO
 
 name: Align
 

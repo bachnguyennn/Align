@@ -10,7 +10,7 @@
 #   -b BRANCH    Branch to inspect (default: main; a positional argument also works)
 #   -r RUN_ID    Inspect this run id instead of the latest run on the branch
 #   -w WORKFLOW  Workflow file name, or "all" for any workflow (default: ci.yml)
-#   -R REPO      owner/repo (default: bachnguyennn/FixMySpine)
+#   -R REPO      owner/repo (default: bachnguyennn/Align)
 #   -A           Fetch annotations for every job, even in runs with more than 10 jobs
 #   -N           Do not fetch annotations (saves API requests)
 #   -h           Help
@@ -24,7 +24,7 @@
 # why CI reports every failure as an annotation (see .github/workflows/ci.yml).
 set -euo pipefail
 
-REPO="bachnguyennn/FixMySpine"
+REPO="bachnguyennn/Align"
 BRANCH="main"
 RUN_ID=""
 WORKFLOW="ci.yml"

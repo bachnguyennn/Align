@@ -9,7 +9,7 @@ The full protocol (every case, battery, offline, privacy) is in
 
 ## What you need
 
-- A Mac with **Xcode 16** (free from the App Store) and Homebrew
+- A Mac with **Xcode 16 or later** (free from the App Store) and Homebrew
 - An **iPhone on iOS 17+** and a USB cable (for the first install)
 - **AirPods Pro** (1st or 2nd gen), AirPods Max, or AirPods 3rd gen or later
 - An Apple ID. A free one works; the app then expires after 7 days and you just run it again.
@@ -18,8 +18,8 @@ The full protocol (every case, battery, offline, privacy) is in
 
 ```sh
 brew install xcodegen
-git clone https://github.com/bachnguyennn/FixMySpine.git
-cd FixMySpine/ios
+git clone https://github.com/bachnguyennn/Align.git
+cd Align/ios
 xcodegen generate
 open Align.xcodeproj
 ```
@@ -140,7 +140,7 @@ you leave the Diagnostics screen.
 ## 7. Report back
 
 Open a GitHub issue using the **Hardware test report** template
-([new issue](https://github.com/bachnguyennn/FixMySpine/issues/new?template=hardware-test.md))
+([new issue](https://github.com/bachnguyennn/Align/issues/new?template=hardware-test.md))
 and paste your tables. Screenshots of the Diagnostics screen help a lot. Or just paste the
 results into our chat.
 

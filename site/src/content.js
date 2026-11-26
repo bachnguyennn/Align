@@ -12,8 +12,8 @@ export const profile = {
 
 export const file = (path) => `${profile.repo}/blob/main/${path}`;
 
-// The first hardware report lives on its own branch until it is merged.
-export const hardwareReport = `${profile.repo}/blob/hardware-test-2026-10-31/docs/agents/reports/hardware-test-2026-10-31.md`;
+// The first hardware report.
+export const hardwareReport = `${profile.repo}/blob/main/docs/agents/reports/hardware-test-2026-10-31.md`;
 
 // docs/agents/integration-log.md, CI run 41249672959 (all jobs green); the last row is this folder's `npm test`.
 export const suites = [
