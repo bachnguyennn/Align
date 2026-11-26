@@ -238,11 +238,11 @@ export class Simulation {
 
   // ---- Commands ---------------------------------------------------------------------------
 
-  /** Runs the 10 s calibration on a still head without waiting, so the page starts ready. */
+  /** Runs the countdown and the 10 s calibration on a still head without waiting, so the page starts ready. */
   calibrateInstantly() {
     this.monitor.beginCalibration();
-    const samples = Math.round(this.config.calibrationDuration * SAMPLE_RATE_HZ) + 1;
-    for (let i = 0; i < samples; i++) {
+    const samples = Math.round((this.config.calibrationCountdown + this.config.calibrationDuration) * SAMPLE_RATE_HZ) + 1;
+    for (let i = 0; i < samples && this.monitor.calibration.isActive; i++) {
       this.time += STEP;
       this.monitor.process({ timestamp: this.time, gravity: this.neutralGravity });
     }
@@ -302,6 +302,7 @@ export class Simulation {
       state,
       tilt,
       held,
+      countdownRemaining: m.calibrationCountdownRemaining,
       gravity: this.lastGravity ?? this.neutralGravity,
       smoothed: m.filter.value,
       outside: state.kind === 'deviating' || state.kind === 'sustainedTilt',

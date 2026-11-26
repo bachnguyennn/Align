@@ -53,6 +53,15 @@ public final class PostureMonitor {
         baseline?.learnedAxes ?? configuration.axes
     }
 
+    /// Seconds left in the "get ready" countdown of a neutral calibration (D-022), or nil when no
+    /// countdown is running. The state stays `.calibrating(progress: 0)` during the countdown.
+    public var calibrationCountdownRemaining: TimeInterval? {
+        guard calibration.isCountingDown else {
+            return nil
+        }
+        return calibration.countdownRemaining(countdown: configuration.calibrationCountdown)
+    }
+
     /// `.calibrating` during a neutral or axis calibration; `.unavailable` before the first sample
     /// and after an interrupt; `.needsCalibration` without a baseline; otherwise the detector state.
     public var state: PostureState {

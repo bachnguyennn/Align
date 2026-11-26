@@ -21,6 +21,7 @@
       1.0,
       0.0
     ],
+    "calibrationCountdown": 0.0,
     "sustainedDuration": 10.0,
     "reminderCooldown": 60.0
   },

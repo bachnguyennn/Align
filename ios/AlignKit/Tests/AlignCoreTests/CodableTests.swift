@@ -119,6 +119,7 @@ final class CodableRoundTripTests: XCTestCase {
         config.maxProcessingRateHz = 25
         XCTAssertEqual(try jsonKeys(config), [
             "calibrationDuration",
+            "calibrationCountdown",
             "calibrationMaxSpreadDegrees",
             "calibrationSpreadQuantile",
             "calibrationMaxDriftDegrees",

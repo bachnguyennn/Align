@@ -72,7 +72,7 @@ final class AxisCalibrationTests: XCTestCase {
     }
 
     /// Neutral-calibrated monitor (0 <= t <= 10 s); the next sample is at t = 10.04.
-    private func calibrated(_ mount: Mount, _ configuration: PostureConfiguration = .default) -> PostureMonitor {
+    private func calibrated(_ mount: Mount, _ configuration: PostureConfiguration = .noCountdown) -> PostureMonitor {
         let monitor = PostureMonitor(configuration: configuration)
         monitor.beginCalibration()
         hold(monitor, mount, from: 0, to: 10 + dt)
@@ -146,7 +146,7 @@ final class AxisCalibrationTests: XCTestCase {
 
     func testServiceReportsProgressAndFinishesWhenTheHeadReturns() {
         var service = AxisCalibrationService()
-        let config = PostureConfiguration.default
+        let config = PostureConfiguration.noCountdown
         service.begin()
         XCTAssertEqual(service.progress(duration: config.axisCalibrationDuration), 0)
         var finished: AxisCalibrationService.Step?
@@ -182,7 +182,7 @@ final class AxisCalibrationTests: XCTestCase {
         for i in 0..<400 {
             count = i + 1
             let step = service.add(gravity: Pose.gravity(forward: 2, lateral: 1), timestamp: Double(i) / rate,
-                                   baselineGravity: down, configuration: .default)
+                                   baselineGravity: down, configuration: .noCountdown)
             if case .inProgress = step {
                 continue
             }
@@ -196,7 +196,7 @@ final class AxisCalibrationTests: XCTestCase {
     // MARK: - Monitor
 
     func testNeedsBaselineIsReportedOnTheNextUpdateOnly() {
-        let monitor = PostureMonitor()
+        let monitor = PostureMonitor(configuration: .noCountdown)
         monitor.beginAxisCalibration()
         XCTAssertEqual(monitor.state, .unavailable)
         let update = monitor.process(Mount.level.sample(0, forward: 0, lateral: 0, heading: 0))
@@ -204,7 +204,7 @@ final class AxisCalibrationTests: XCTestCase {
         XCTAssertEqual(update.state, .needsCalibration)
         XCTAssertEqual(axisOutcomes(hold(monitor, .level, from: dt, to: 2)).count, 0)
 
-        let viaInterrupt = PostureMonitor()
+        let viaInterrupt = PostureMonitor(configuration: .noCountdown)
         viaInterrupt.beginAxisCalibration()
         XCTAssertEqual(viaInterrupt.interrupt(at: 1).axisCalibrationOutcome, .failed(.needsBaseline))
     }
@@ -303,7 +303,7 @@ final class AxisCalibrationTests: XCTestCase {
     }
 
     func testStateIsCalibratingWithNoDetectorRemindersOrEpisodes() {
-        var configuration = PostureConfiguration.default
+        var configuration = PostureConfiguration.noCountdown
         configuration.sustainedDuration = 1
         configuration.axisCalibrationDuration = 8
         let monitor = calibrated(.level, configuration)

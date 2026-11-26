@@ -12,15 +12,20 @@ export default function HoldMeter({ onDark = false }) {
   const cooldown = useSim((s) => Math.ceil(s.cooldownRemaining));
   const reminded = useSim((s) => s.state.kind === 'sustainedTilt' && s.lastReminder !== null && s.lastReminder.timestamp >= s.state.since);
   const calibration = useSim((s) => (s.state.kind === 'calibrating' ? Math.round(s.state.progress * 100) : 0));
+  const countdown = useSim((s) => (s.countdownRemaining == null ? null : Math.max(1, Math.ceil(s.countdownRemaining - 1e-9))));
+  const holdSeconds = useSim((s) => s.config.calibrationDuration);
 
   let title = 'Within your range';
   let detail = 'Nothing to do. Short glances past the dashed line are fine.';
   let fill = 0;
   let tone = 'ok';
 
-  if (kind === 'calibrating') {
+  if (kind === 'calibrating' && countdown !== null) {
+    title = `Get ready: ${countdown}`;
+    detail = 'Look straight ahead. Recording starts when the countdown ends.';
+  } else if (kind === 'calibrating') {
     title = 'Calibrating';
-    detail = 'Hold still for 10 seconds so Align can learn your neutral position.';
+    detail = `Hold still for ${holdSeconds} seconds so Align can learn your neutral position.`;
     fill = calibration;
   } else if (kind === 'needsCalibration' || kind === 'unavailable') {
     title = 'Needs calibration';

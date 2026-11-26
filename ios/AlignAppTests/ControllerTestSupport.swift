@@ -122,7 +122,8 @@ final class ControllerHarness {
     /// Runs a neutral calibration from upright samples and checks it succeeded.
     func calibrateNeutral(file: StaticString = #filePath, line: UInt = #line) {
         controller.startCalibration()
-        feed(seconds: 10.4)
+        let c = environment.settings.configuration
+        feed(seconds: c.calibrationCountdown + c.calibrationDuration + 0.4)
         guard case .succeeded = controller.calibrationPhase else {
             XCTFail("neutral calibration did not succeed: \(controller.calibrationPhase)", file: file, line: line)
             return

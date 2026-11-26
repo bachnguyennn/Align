@@ -20,7 +20,8 @@
       0.0,
       1.0,
       0.0
-    ]
+    ],
+    "calibrationCountdown": 0.0
   },
   "baseline": null,
   "actions": [

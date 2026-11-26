@@ -51,7 +51,7 @@ class MonitorTest {
     }
 
     private static PostureMonitor calibratedMonitor() {
-        PostureMonitor m = new PostureMonitor(PostureConfiguration.DEFAULT);
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN);
         m.beginCalibration();
         feed(m, 0.0, 10.0 + DT);
         assertNotNull(m.baseline());
@@ -64,18 +64,18 @@ class MonitorTest {
 
     @Test
     void initialStates() {
-        PostureMonitor m = new PostureMonitor();
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN);
         assertEquals(Kind.UNAVAILABLE, m.state().kind());
         PostureUpdate u = m.process(poseSample(0.0));
         assertEquals(Kind.NEEDS_CALIBRATION, u.state().kind());
         assertNull(u.tilt());
-        PostureMonitor m2 = new PostureMonitor(PostureConfiguration.DEFAULT, baseline());
+        PostureMonitor m2 = new PostureMonitor(TestConfigs.NO_COUNTDOWN, baseline());
         assertEquals(Kind.NEUTRAL, m2.process(poseSample(0.0)).state().kind());
     }
 
     @Test
     void calibrationProgressSingleOutcomeAndVersion() {
-        PostureMonitor m = new PostureMonitor();
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN);
         m.beginCalibration();
         assertEquals(Kind.CALIBRATING, m.state().kind());
         assertEquals(0.0, m.state().progress());
@@ -96,7 +96,7 @@ class MonitorTest {
 
     @Test
     void versionContinuesFromStoredBaseline() {
-        PostureMonitor m = new PostureMonitor(PostureConfiguration.DEFAULT, baseline(5));
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN, baseline(5));
         m.beginCalibration();
         feed(m, 0.0, 10.5);
         assertEquals(6, m.baseline().version());
@@ -181,7 +181,7 @@ class MonitorTest {
 
     @Test
     void interruptFailsCalibration() {
-        PostureMonitor m = new PostureMonitor();
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN);
         m.beginCalibration();
         feed(m, 0.0, 5.0);
         PostureUpdate u = m.interrupt(5.0);
@@ -205,7 +205,7 @@ class MonitorTest {
 
     @Test
     void gapDuringCalibrationReportsSensorInterruptedOnNextSample() {
-        PostureMonitor m = new PostureMonitor();
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN);
         m.beginCalibration();
         feed(m, 0.0, 4.0);
         PostureUpdate u = m.process(poseSample(6.0));
@@ -216,7 +216,7 @@ class MonitorTest {
 
     @Test
     void decimationCapsProcessingRate() {
-        PostureConfiguration cfg = PostureConfiguration.builder().maxProcessingRateHz(10.0).build();
+        PostureConfiguration cfg = TestConfigs.NO_COUNTDOWN.replacing(b -> b.maxProcessingRateHz(10.0));
         PostureMonitor m = new PostureMonitor(cfg, baseline());
         int processed = 0;
         for (int i = 0; i < 250; i++) {  // 10 s at 25 Hz
@@ -242,7 +242,7 @@ class MonitorTest {
 
     @Test
     void missingGravityIsDerivedFromAttitude() {
-        PostureMonitor m = new PostureMonitor(PostureConfiguration.DEFAULT, baseline());
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN, baseline());
         m.process(poseSample(0.0, 0.0));
         PostureUpdate u = null;
         for (int i = 1; i < 100; i++) {
@@ -253,7 +253,7 @@ class MonitorTest {
 
     @Test
     void nonIncreasingAndZeroGravitySamplesAreIgnored() {
-        PostureMonitor m = new PostureMonitor(PostureConfiguration.DEFAULT, baseline());
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN, baseline());
         m.process(poseSample(1.0));
         Double before = m.lastProcessedTimestamp();
         m.process(poseSample(1.0, 30.0));

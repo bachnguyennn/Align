@@ -86,7 +86,7 @@ class AxisCalibrationTest {
     }
 
     private static PostureMonitor calibrated(Mount mount) {
-        return calibrated(mount, PostureConfiguration.DEFAULT);
+        return calibrated(mount, TestConfigs.NO_COUNTDOWN);
     }
 
     private static List<AxisCalibrationOutcome> axisOutcomes(List<PostureUpdate> updates) {
@@ -153,7 +153,7 @@ class AxisCalibrationTest {
     @Test
     void serviceReportsProgressAndFinishesWhenTheHeadReturns() {
         AxisCalibrationService s = new AxisCalibrationService();
-        PostureConfiguration cfg = PostureConfiguration.DEFAULT;
+        PostureConfiguration cfg = TestConfigs.NO_COUNTDOWN;
         s.begin();
         assertEquals(0.0, s.progress(cfg.axisCalibrationDuration()));
         AxisCalibrationStep step = null;
@@ -186,7 +186,7 @@ class AxisCalibrationTest {
         int i = 0;
         for (; i < 400 && (step == null || !step.finished()); i++) {
             step = s.add(Geometry.gravityInHeadFrame(Pose.poseAttitude(2.0, 1.0)), i / RATE, DOWN,
-                    PostureConfiguration.DEFAULT);
+                    TestConfigs.NO_COUNTDOWN);
         }
         assertEquals(AxisCalibrationFailure.NO_NOD_DETECTED, step.failure());
         assertEquals(201, i);  // t = 0 .. 8.0 inclusive
@@ -196,7 +196,7 @@ class AxisCalibrationTest {
 
     @Test
     void needsBaselineIsReportedOnTheNextUpdateOnly() {
-        PostureMonitor m = new PostureMonitor();
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN);
         m.beginAxisCalibration();
         assertEquals(Kind.UNAVAILABLE, m.state().kind());
         PostureUpdate u = m.process(Mount.NONE.sample(0.0, 0, 0, 0));
@@ -205,7 +205,7 @@ class AxisCalibrationTest {
         assertEquals(Kind.NEEDS_CALIBRATION, u.state().kind());
         assertEquals(List.of(), axisOutcomes(hold(m, Mount.NONE, DT, 2.0, 0, 0)));
 
-        PostureMonitor viaInterrupt = new PostureMonitor();
+        PostureMonitor viaInterrupt = new PostureMonitor(TestConfigs.NO_COUNTDOWN);
         viaInterrupt.beginAxisCalibration();
         assertEquals(AxisCalibrationFailure.NEEDS_BASELINE, viaInterrupt.interrupt(1.0).axisCalibrationOutcome().failure());
     }
@@ -309,7 +309,7 @@ class AxisCalibrationTest {
 
     @Test
     void stateIsCalibratingWithNoDetectorRemindersOrEpisodes() {
-        PostureMonitor m = calibrated(Mount.NONE, PostureConfiguration.DEFAULT.replacing(
+        PostureMonitor m = calibrated(Mount.NONE, TestConfigs.NO_COUNTDOWN.replacing(
                 b -> b.sustainedDuration(1.0).axisCalibrationDuration(8.0)));
         m.beginAxisCalibration();
         List<PostureUpdate> ups = hold(m, Mount.NONE, 10.04, 18.05, 25.0, 0.0);
@@ -394,7 +394,7 @@ class AxisCalibrationTest {
     void storedBaselineWithLearnedAxesIsUsedForTilt() {
         HeadAxisConvention learned = Pose.trueDeviceAxes(0, 0, 30, null);
         NeutralBaseline b = new NeutralBaseline(DOWN, 0.0, 250, 4, learned);
-        PostureMonitor m = new PostureMonitor(PostureConfiguration.DEFAULT, b);
+        PostureMonitor m = new PostureMonitor(TestConfigs.NO_COUNTDOWN, b);
         assertEquals(learned, m.effectiveAxes());
         Mount mount = new Mount(0, 0, 30);
         List<PostureUpdate> ups = hold(m, mount, 0.0, 4.0, 0.0, 20.0);

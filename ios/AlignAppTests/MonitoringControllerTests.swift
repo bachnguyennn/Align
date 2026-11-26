@@ -276,3 +276,75 @@ final class AxisCalibrationFlowTests: XCTestCase {
         XCTAssertEqual(a.z, b.z, accuracy: 1e-9, file: file, line: line)
     }
 }
+
+/// The "get ready" countdown before a neutral calibration records (D-022, issue #1).
+final class CalibrationCountdownFlowTests: XCTestCase {
+    @MainActor
+    func testCountsDown321ThenRecordsFromZero() {
+        let h = ControllerHarness()
+        defer { h.finish() }
+        h.connect()
+        h.controller.startCalibration()
+        XCTAssertEqual(h.controller.calibrationPhase, .countingDown(secondsLeft: 3))
+        XCTAssertTrue(h.controller.isNeutralCalibrating)
+
+        var seen: [Int] = []
+        var firstProgress: Double?
+        for _ in 0..<Int(3.5 * ControllerHarness.rate) {
+            h.feed(seconds: 1 / ControllerHarness.rate)
+            switch h.controller.calibrationPhase {
+            case .countingDown(let s):
+                if seen.last != s { seen.append(s) }
+            case .inProgress(let p):
+                if firstProgress == nil { firstProgress = p }
+            default:
+                XCTFail("unexpected phase \(h.controller.calibrationPhase)")
+            }
+        }
+        XCTAssertEqual(seen, [3, 2, 1])
+        XCTAssertEqual(firstProgress, 0, "the ring starts at 0 % after the countdown")
+    }
+
+    /// Looking down at the phone when tapping Start, then up during the countdown: succeeds on
+    /// the first try (the hardware finding of 2026-10-31).
+    @MainActor
+    func testLookingUpDuringTheCountdownDoesNotFailCalibration() {
+        let h = ControllerHarness()
+        defer { h.finish() }
+        h.connect()
+        h.controller.startCalibration()
+        h.feed(seconds: 1) { _ in (30, 0) }        // still looking at the phone
+        h.feed(seconds: 1) { rel in (30 * (1 - rel), 0) }  // looks up
+        h.feed(seconds: 11.5)                     // rest of the countdown, then the 10 s hold
+        guard case .succeeded = h.controller.calibrationPhase else {
+            return XCTFail("expected success, got \(h.controller.calibrationPhase)")
+        }
+    }
+
+    @MainActor
+    func testMovingDuringTheHoldStillFails() {
+        let h = ControllerHarness()
+        defer { h.finish() }
+        h.connect()
+        h.controller.startCalibration()
+        h.feed(seconds: 3.5)
+        h.feed(seconds: 10) { rel in (rel < 5 ? 12 : 0, 0) }
+        XCTAssertEqual(h.controller.calibrationPhase, .failed(.tooMuchMovement))
+    }
+
+    @MainActor
+    func testCancelDuringTheCountdown() {
+        let h = ControllerHarness()
+        defer { h.finish() }
+        h.connect()
+        let before = h.controller.baseline
+        h.controller.startCalibration()
+        h.feed(seconds: 1.2)
+        XCTAssertEqual(h.controller.calibrationPhase, .countingDown(secondsLeft: 2))
+        h.controller.cancelCalibration()
+        XCTAssertEqual(h.controller.calibrationPhase, .idle)
+        h.feed(seconds: 12)
+        XCTAssertEqual(h.controller.calibrationPhase, .idle)
+        XCTAssertEqual(h.controller.baseline, before)
+    }
+}

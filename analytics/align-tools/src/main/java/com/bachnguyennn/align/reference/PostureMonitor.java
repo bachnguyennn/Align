@@ -114,6 +114,17 @@ public final class PostureMonitor {
     }
 
     /**
+     * Seconds left in the "get ready" countdown of a neutral calibration (D-022), or null when no
+     * countdown is running. The state stays {@code calibrating(0)} during the countdown.
+     */
+    public Double calibrationCountdownRemaining() {
+        if (!calibration.isCountingDown()) {
+            return null;
+        }
+        return calibration.countdownRemaining(configuration.calibrationCountdown());
+    }
+
+    /**
      * {@code calibrating} during a neutral or axis calibration; {@code unavailable} before the
      * first sample and after an interrupt; {@code needsCalibration} without a baseline; otherwise
      * the detector state.

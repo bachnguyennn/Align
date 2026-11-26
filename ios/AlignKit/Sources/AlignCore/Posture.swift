@@ -183,6 +183,10 @@ public struct HeadAxisConvention: Equatable, Codable, Sendable {
 /// Tunable detection parameters. Defaults are experimental, not medically validated.
 public struct PostureConfiguration: Equatable, Codable, Sendable {
     public var calibrationDuration: TimeInterval = 10
+    /// "Get ready" countdown before the calibration hold (D-022): samples in the first
+    /// `calibrationCountdown` seconds after `beginCalibration()` are discarded, so the user can look
+    /// up from the phone. 0 = the hold starts on the first sample (before D-022).
+    public var calibrationCountdown: TimeInterval = 3
     /// Calibration fails with `.tooMuchMovement` unless at least `calibrationSpreadQuantile` of
     /// the samples lie within this tilt of the calibration mean.
     public var calibrationMaxSpreadDegrees: Double = 5
@@ -224,6 +228,7 @@ public struct PostureConfiguration: Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case calibrationDuration
+        case calibrationCountdown
         case calibrationMaxSpreadDegrees
         case calibrationSpreadQuantile
         case calibrationMaxDriftDegrees
@@ -251,6 +256,7 @@ public struct PostureConfiguration: Equatable, Codable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = PostureConfiguration()
         calibrationDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .calibrationDuration) ?? d.calibrationDuration
+        calibrationCountdown = try c.decodeIfPresent(TimeInterval.self, forKey: .calibrationCountdown) ?? d.calibrationCountdown
         calibrationMaxSpreadDegrees = try c.decodeIfPresent(Double.self, forKey: .calibrationMaxSpreadDegrees) ?? d.calibrationMaxSpreadDegrees
         calibrationSpreadQuantile = try c.decodeIfPresent(Double.self, forKey: .calibrationSpreadQuantile) ?? d.calibrationSpreadQuantile
         calibrationMaxDriftDegrees = try c.decodeIfPresent(Double.self, forKey: .calibrationMaxDriftDegrees) ?? d.calibrationMaxDriftDegrees

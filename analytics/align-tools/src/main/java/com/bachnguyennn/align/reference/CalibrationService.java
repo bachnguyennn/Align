@@ -11,8 +11,14 @@ import java.util.List;
 
 /**
  * Neutral-baseline calibration. Collects {@code calibrationDuration} seconds of smoothed gravity,
- * measured from the first sample it receives. Fails with insufficientSamples if fewer than
+ * measured from the first sample after the countdown. Fails with insufficientSamples if fewer than
  * {@code minimumCalibrationSamples} were collected.
+ *
+ * <p>Countdown (D-022): the first sample after {@link #begin()} starts a "get ready" countdown of
+ * {@code calibrationCountdown} seconds. Samples with t - countdownStart < countdown are discarded
+ * (the user is still looking down at the phone); the first sample at or after the end of the
+ * countdown is the first sample of the hold. Progress stays 0 during the countdown. With a
+ * countdown of 0 the first sample starts the hold, exactly as before D-022.
  *
  * <p>Spread rule (D-017): let {@code m} be the normalized mean of all samples and the inliers the
  * samples within {@code calibrationMaxSpreadDegrees} of {@code m}. Fails with tooMuchMovement
@@ -45,6 +51,7 @@ public final class CalibrationService {
     }
 
     private boolean isActive = false;
+    private Double countdownStart;
     private Double startTimestamp;
     private Double lastTimestamp;
     private List<Vec3> samples = new ArrayList<>();
@@ -109,6 +116,7 @@ public final class CalibrationService {
 
     public void begin() {
         isActive = true;
+        countdownStart = null;
         startTimestamp = null;
         lastTimestamp = null;
         samples = new ArrayList<>();
@@ -117,10 +125,31 @@ public final class CalibrationService {
 
     public void cancel() {
         isActive = false;
+        countdownStart = null;
         startTimestamp = null;
         lastTimestamp = null;
         samples = new ArrayList<>();
         timestamps = new ArrayList<>();
+    }
+
+    /**
+     * Seconds left in the countdown (D-022): the whole countdown before the first sample, then
+     * countdown - (last - countdownStart), never below 0. 0 once the hold has started or when not
+     * active.
+     */
+    public double countdownRemaining(double countdown) {
+        if (!isActive || startTimestamp != null) {
+            return 0.0;
+        }
+        if (countdownStart == null || lastTimestamp == null) {
+            return Math.max(0.0, countdown);
+        }
+        return Math.max(0.0, countdown - (lastTimestamp - countdownStart));
+    }
+
+    /** True while active and the hold has not started (the countdown is running). */
+    public boolean isCountingDown() {
+        return isActive && startTimestamp == null;
     }
 
     public double progress(double duration) {
@@ -135,10 +164,16 @@ public final class CalibrationService {
     }
 
     public CalibrationStep add(Vec3 gravityUnit, double timestamp, PostureConfiguration config) {
-        if (startTimestamp == null) {
-            startTimestamp = timestamp;
+        if (countdownStart == null) {
+            countdownStart = timestamp;
         }
         lastTimestamp = timestamp;
+        if (startTimestamp == null) {
+            if (timestamp - countdownStart + Model.TIME_EPSILON < config.calibrationCountdown()) {
+                return CalibrationStep.inProgress(0.0);
+            }
+            startTimestamp = timestamp;
+        }
         samples.add(gravityUnit);
         timestamps.add(timestamp);
         double elapsed = timestamp - startTimestamp;

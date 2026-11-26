@@ -71,7 +71,7 @@ function replay(fixture) {
 
 describe('fixture replay parity with the reference implementation', () => {
   it('finds every committed fixture', () => {
-    expect(fixtures).toHaveLength(14);
+    expect(fixtures).toHaveLength(16);
   });
 
   for (const file of fixtures) {

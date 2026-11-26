@@ -75,8 +75,10 @@ one-line fix in the code.
 To avoid waiting 5 minutes between reminders, first go to **Settings → Reminders → Spacing**
 and set it to **2 minutes**. Keep **Sensitivity** on **Balanced** (15°, 30 s).
 
-1. **Home → Calibrate → Start calibration.** Sit upright, look ahead, keep still for 10 s.
-   Expected: progress fills and it says "Neutral position saved".
+1. **Home → Calibrate → Start calibration.** You can tap it while looking down at the phone:
+   a 3, 2, 1 "Get ready" countdown gives you time to look up (D-022). Then sit upright, look
+   ahead and keep still for 10 s. Expected: the ring starts at 0% after the countdown, fills, and
+   it says "Neutral position saved" on the first try, with the phone in your lap.
 2. **Nod step.** Tap **Start the nod**, then nod slowly once: chin down about 20–30°, then back
    up (about a second each way). Expected: "All set". If it says it didn't see a nod, try a
    slightly bigger, slower nod; if it says it looked like a sideways tilt, nod straight down and

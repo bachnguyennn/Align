@@ -108,6 +108,10 @@ public final class PostureMonitor {
 - On success the baseline gets `learnedAxes` and `version + 1`; tilt from the next sample uses
   them. `interrupt` or a sample gap fails it with `.sensorInterrupted`.
 - A successful neutral calibration produces a baseline with `learnedAxes == nil`.
+- Neutral calibration countdown (D-022): the first sample after `beginCalibration()` starts a
+  "get ready" countdown of `calibrationCountdown` seconds (default 3). Samples with
+  t − countdownStart < `calibrationCountdown` are discarded; the hold (and every rule below) starts
+  on the first sample at or after its end. 0 = the hold starts on the first sample.
 - Neutral calibration: `.tooMuchMovement` unless at least `calibrationSpreadQuantile` of the
   samples are within `calibrationMaxSpreadDegrees` of the mean (1.0 = v1 rule).
 - Neutral calibration drift (D-020): also `.tooMuchMovement` if the normalized mean gravity of the
@@ -122,8 +126,10 @@ Internal components (public for testing): `MotionFilter`, `CalibrationService`, 
 ### Behavior
 
 - No baseline → `.needsCalibration`; `tilt == nil`.
-- `beginCalibration()` → `.calibrating(progress)` for `calibrationDuration`, then exactly one
-  update with `calibrationOutcome` set. On success the baseline `version` = previous + 1 (or 1).
+- `beginCalibration()` → `.calibrating(progress: 0)` during the `calibrationCountdown` (D-022;
+  `calibrationCountdownRemaining` is the seconds left, nil otherwise), then `.calibrating(progress)`
+  for `calibrationDuration`, then exactly one update with `calibrationOutcome` set. Cancelling
+  during the countdown gives no outcome. On success the baseline `version` = previous + 1 (or 1).
 - With a baseline: `.neutral` → `.deviating` when a smoothed tilt component crosses its threshold
   → `.sustainedTilt` after `sustainedDuration` → back to `.neutral` once below `threshold − hysteresis`.
 - `reminder` is non-nil on the first update in a sustained tilt at which at least

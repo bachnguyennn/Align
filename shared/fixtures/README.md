@@ -72,6 +72,8 @@ Under this convention a +20° chin-down pose has head-frame gravity (0, +0.342, 
 | `nod_axis_calibration_sideways_rejected` (Java) | right ear to shoulder 20° and back instead of a nod | axis `inconsistentMotion`, no learned axes |
 | `nod_axis_calibration_no_nod` (Java) | keeps still during the axis calibration | axis `noNodDetected` after 8 s, no learned axes |
 | `calibration_brief_fidget` (Java) | one 1 s fidget to 10° at 4 s during the neutral calibration | `succeeded` with quantile 0.9 (the v1 rule, quantile 1.0, rejects it) |
+| `calibration_countdown_look_up` (Java) | starts calibration looking down at the phone (30° forward), looks up during the default 3 s countdown (D-022), holds still | `succeeded` (with `calibrationCountdown` 0 the same motion fails with `tooMuchMovement`) |
+| `calibration_countdown_moved_during_hold` (Java) | as above, then ±9°/±4° movement during the hold after the countdown | `tooMuchMovement`, final `needsCalibration` |
 | `calibration_slow_slouch` (Java) | steady slouch from 0 to 10° forward over the 10 s neutral calibration | `tooMuchMovement` from the D-020 drift rule (the spread rule alone accepts it), final `needsCalibration` |
 
 ## Format (schemaVersion 1)
@@ -115,8 +117,17 @@ Keys are the Swift `PostureConfiguration` property names: `calibrationDuration`,
 `reminderCooldown`, `smoothingTimeConstant`, `maxProcessingRateHz`, `maxSampleGap`, plus
 `forwardAxis` / `lateralAxis` as `[x, y, z]`, since D-017 `calibrationSpreadQuantile`,
 `axisCalibrationDuration`, `axisCalibrationMinimumNodDegrees`, `axisCalibrationMaxYawDegrees`,
-`axisCalibrationMaxOffAxisRatio`, and since D-020 `calibrationMaxDriftDegrees`,
-`calibrationDriftWindow`. Absent keys keep the `.default` value.
+`axisCalibrationMaxOffAxisRatio`, since D-020 `calibrationMaxDriftDegrees`,
+`calibrationDriftWindow`, and since D-022 `calibrationCountdown`. Absent keys keep the `.default`
+value.
+
+**Countdown (D-022).** The default `calibrationCountdown` is 3 s, but every fixture written before
+D-022 assumes the hold starts on the first sample, so those 14 fixtures set
+`"calibrationCountdown": 0.0` (the Java generator's `axesConfig()` writes it; it was added to the
+eight Python-generated files by hand, config only). Their samples, `expected` and `reference`
+blocks are unchanged. The two `calibration_countdown_*` fixtures leave the key out and use the
+default. A recording made before D-022 has no `calibrationCountdown` in its `config`; replay it
+with `--set calibrationCountdown=0` to reproduce what the app did.
 
 ### `actions`
 Applied in order **before the first sample whose `t` ≥ the action's `t`**; actions after the

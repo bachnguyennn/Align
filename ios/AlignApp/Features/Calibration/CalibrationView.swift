@@ -18,6 +18,13 @@ struct CalibrationView: View {
 
     private static let nodInstruction = "Now nod slowly — chin down about 20–30°, then back up."
 
+    /// "After a 3-second countdown, hold still for about 10 seconds." (no countdown: just the hold).
+    static func holdInstruction(_ configuration: PostureConfiguration) -> String {
+        let hold = "hold still for about \(Int(configuration.calibrationDuration.rounded())) seconds."
+        let countdown = Int(configuration.calibrationCountdown.rounded(.up))
+        return countdown > 0 ? "After a \(countdown)-second countdown, \(hold)" : "H" + hold.dropFirst()
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.Spacing.l) {
@@ -62,6 +69,18 @@ struct CalibrationView: View {
             Text("Waiting for your AirPods…")
                 .font(.headline)
             connectionStatus
+            cancelButton
+
+        case .countingDown(let secondsLeft):
+            CountdownDial(secondsLeft: secondsLeft, animated: !reduceMotion)
+            Text("Get ready")
+                .font(.headline)
+            Text("Look up from your phone and straight ahead. Recording starts when the countdown ends.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Text("Step 1 of 2")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             cancelButton
 
         case .inProgress(let progress):
@@ -122,7 +141,7 @@ struct CalibrationView: View {
             CardTitle("Before you start")
             instructionRow(number: 1, text: "Sit comfortably upright, the way you'd like to sit while you work.")
             instructionRow(number: 2, text: "Look straight ahead at something at eye level.")
-            instructionRow(number: 3, text: "Hold still for about \(Int(settings.configuration.calibrationDuration)) seconds.")
+            instructionRow(number: 3, text: CalibrationView.holdInstruction(settings.configuration))
             instructionRow(number: 4, text: "Then nod slowly once, so Align learns how your AirPods sit.")
             if let baseline = controller.baseline {
                 Text("Last calibrated \(baseline.capturedAt.formatted(date: .abbreviated, time: .shortened)).")
@@ -367,8 +386,10 @@ struct CalibrationView: View {
             message = "Neutral position saved. Next, one slow nod."
         case .failed(let reason):
             message = "Calibration didn't finish. \(reason.message)"
+        case .countingDown(let secondsLeft) where secondsLeft >= Int(settings.configuration.calibrationCountdown.rounded(.up)):
+            message = "Get ready. Look straight ahead. Recording starts in \(secondsLeft) seconds."
         case .inProgress(let progress) where progress == 0:
-            message = "Calibration started. Hold still."
+            message = "Recording started. Hold still."
         default:
             return
         }
@@ -414,6 +435,30 @@ struct ProgressRing: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Calibration progress")
         .accessibilityValue("\(Int((clamped * 100).rounded())) percent")
+    }
+}
+
+/// The "get ready" countdown before calibration records (D-022): 3, 2, 1 in the ring's place.
+struct CountdownDial: View {
+    var secondsLeft: Int
+    var animated: Bool
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Theme.hairline, lineWidth: 10)
+            Text("\(secondsLeft)")
+                .font(.system(size: 64, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(Theme.accent)
+                .contentTransition(.numericText(countsDown: true))
+                .animation(animated ? .snappy : nil, value: secondsLeft)
+        }
+        .frame(width: 160, height: 160)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Get ready")
+        .accessibilityValue("Recording starts in \(secondsLeft) \(secondsLeft == 1 ? "second" : "seconds")")
+        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
